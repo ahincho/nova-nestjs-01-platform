@@ -162,7 +162,7 @@ ejemplo que ya absorbió el cambio.
 
 ## Consumirlos desde otro proyecto
 
-[`nova-nestjs-example`](https://github.com/ahincho/nova-nestjs-03-example) es el
+[`nova-nestjs-example`](https://github.com/ahincho/nova-example-07-nestjs-reference) es el
 servicio de referencia y corre siempre contra la última versión publicada. En
 corto:
 

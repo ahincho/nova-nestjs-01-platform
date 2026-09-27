@@ -62,7 +62,7 @@ el install, y hacerlo acá dejaría un lockfile congelado en la versión del dí
 que se generó-, y el workflow instala con `--frozen-lockfile`, que es lo correcto
 en CI. Sin ese archivo la primera corrida muere en el primer paso.
 
-[`ahincho/nova-nestjs-04-generated`](https://github.com/ahincho/nova-nestjs-04-generated)
+[`ahincho/nova-example-08-nestjs-generated`](https://github.com/ahincho/nova-example-08-nestjs-generated)
 es exactamente lo que sale de este generador, empujado sin editar una línea. Sirve
 para mirar el resultado antes de generar, y para comprobar que este workflow corre
 de verdad y no sólo en una prueba unitaria.

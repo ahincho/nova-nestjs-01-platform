@@ -26,7 +26,7 @@ runs:
     - name: Check out the example service
       uses: actions/checkout@v7
       with:
-        repository: ahincho/nova-nestjs-03-example
+        repository: ahincho/nova-example-07-nestjs-reference
         ref: ${{ inputs.consumer-ref }}
         path: .consumer
 
