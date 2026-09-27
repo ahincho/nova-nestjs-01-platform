@@ -5,7 +5,7 @@
   "license": "EPL-2.0",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/ahincho/nova-nestjs.git",
+    "url": "git+https://github.com/ahincho/nova-nestjs-01-platform.git",
     "directory": "packages/core"
   },
   "publishConfig": {

@@ -1,6 +1,6 @@
 # <%= name %>
 
-<%= classify(name) %>, sobre [`@ahincho/nova-nestjs`](https://github.com/ahincho/nova-nestjs).
+<%= classify(name) %>, sobre [`@ahincho/nova-nestjs`](https://github.com/ahincho/nova-nestjs-01-platform).
 
 ```bash
 pnpm install

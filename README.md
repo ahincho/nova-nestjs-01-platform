@@ -4,10 +4,10 @@ Meta-framework de **Nova Platform** para NestJS. Monorepo de paquetes publicados
 en GitHub Packages bajo el scope `@ahincho`.
 
 Es el equivalente en NestJS de lo que
-[`nova-java-spring-boot-starter`](https://github.com/ahincho/nova-java-spring-boot-starter)
-y [`nova-java-quarkus-parent`](https://github.com/ahincho/nova-java-quarkus-parent)
+[`nova-java-spring-boot-starter`](https://github.com/ahincho/nova-java-12-spring-boot-starter)
+y [`nova-java-quarkus-parent`](https://github.com/ahincho/nova-java-15-quarkus-parent)
 son en Java. Parte de la arquitectura de cinco niveles del
-[ADR-001](https://github.com/ahincho/nova-docs), pero la colapsa en tres
+[ADR-001](https://github.com/ahincho/nova-shared-01-docs), pero la colapsa en tres
 paquetes; el porqué está más abajo.
 
 ## Por qué un monorepo y no un repo por paquete
@@ -162,7 +162,7 @@ ejemplo que ya absorbió el cambio.
 
 ## Consumirlos desde otro proyecto
 
-[`nova-nestjs-example`](https://github.com/ahincho/nova-nestjs-example) es el
+[`nova-nestjs-example`](https://github.com/ahincho/nova-nestjs-03-example) es el
 servicio de referencia y corre siempre contra la última versión publicada. En
 corto:
 
