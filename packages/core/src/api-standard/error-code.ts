@@ -1,5 +1,5 @@
 /**
- * Code used for any 5xx, so a server fault never leaks which one it was.
+ * El código de un 5xx que la tabla no nombra.
  */
 export const INTERNAL_ERROR_CODE = 'INTERNAL_SERVER_ERROR';
 
@@ -8,6 +8,10 @@ export const INTERNAL_ERROR_CODE = 'INTERNAL_SERVER_ERROR';
  */
 export const DEFAULT_ERROR_CODE = 'REQUEST_ERROR';
 
+// El catálogo de la plataforma de ADR-031, el mismo en los tres stacks. Los
+// tres 5xx con nombre propio son los que le dicen al cliente si conviene
+// reintentar -un 503 o un 504 sí, un 500 no- sin contarle la topología: el
+// código es el del status, y el proveedor que falló va sólo al log.
 const STATUS_ERROR_CODES: Readonly<Record<number, string>> = {
   400: 'BAD_REQUEST',
   401: 'UNAUTHORIZED',
@@ -21,18 +25,25 @@ const STATUS_ERROR_CODES: Readonly<Record<number, string>> = {
   415: 'UNSUPPORTED_MEDIA_TYPE',
   422: 'UNPROCESSABLE_ENTITY',
   429: 'TOO_MANY_REQUESTS',
+  500: INTERNAL_ERROR_CODE,
+  502: 'BAD_GATEWAY',
+  503: 'SERVICE_UNAVAILABLE',
+  504: 'GATEWAY_TIMEOUT',
 };
 
 /**
- * Maps an HTTP status to the stable error code clients switch on.
+ * El código estable por el que ramifica el cliente, a partir del status HTTP.
  *
- * Clients branch on `code`, not on `status`, because the code survives a change
- * of transport. Every 5xx collapses to {@link INTERNAL_ERROR_CODE} on purpose:
- * telling a caller apart a 502 from a 504 tells them about our topology.
+ * El cliente decide por `code` y no por `status` porque el código sobrevive a un
+ * cambio de transporte. Un 4xx que la tabla no nombra lleva
+ * {@link DEFAULT_ERROR_CODE}, y un 5xx, {@link INTERNAL_ERROR_CODE}.
  */
 export function statusToErrorCode(status: number): string {
-  if (status >= 500) {
-    return INTERNAL_ERROR_CODE;
+  const named = STATUS_ERROR_CODES[status];
+
+  if (named !== undefined) {
+    return named;
   }
-  return STATUS_ERROR_CODES[status] ?? DEFAULT_ERROR_CODE;
+
+  return status >= 500 ? INTERNAL_ERROR_CODE : DEFAULT_ERROR_CODE;
 }

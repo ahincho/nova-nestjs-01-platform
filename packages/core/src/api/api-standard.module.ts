@@ -4,7 +4,9 @@ import { AllExceptionsFilter } from './filters/all-exceptions.filter';
 import { ResponseWrapperInterceptor } from './interceptors/response-wrapper.interceptor';
 import {
   API_STANDARD_OPTIONS,
+  ERROR_PORTS,
   resolveApiStandardOptions,
+  resolveErrorPorts,
   type ApiStandardModuleOptions,
 } from './tokens';
 
@@ -28,6 +30,17 @@ export class ApiStandardModule {
 
     const providers: Provider[] = [
       { provide: API_STANDARD_OPTIONS, useValue: resolved },
+      // Los puertos quedan aunque el filtro esté apagado, igual que las
+      // opciones: son la forma de los errores del servicio, y quien los contesta
+      // por su cuenta -un filtro para otro transporte- los inyecta en vez de
+      // inventar otra.
+      {
+        provide: ERROR_PORTS,
+        useValue: resolveErrorPorts(
+          options.errors,
+          resolved.internalErrorMessage,
+        ),
+      },
     ];
 
     if (resolved.wrapResponses) {
@@ -45,7 +58,7 @@ export class ApiStandardModule {
       module: ApiStandardModule,
       global: true,
       providers,
-      exports: [API_STANDARD_OPTIONS],
+      exports: [API_STANDARD_OPTIONS, ERROR_PORTS],
     };
   }
 }

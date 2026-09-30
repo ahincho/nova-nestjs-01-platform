@@ -2,6 +2,7 @@ import { applyDecorators, type Type } from '@nestjs/common';
 import {
   ApiExtraModels,
   ApiProperty,
+  ApiPropertyOptional,
   ApiResponse,
   getSchemaPath,
 } from '@nestjs/swagger';
@@ -30,6 +31,22 @@ export class ApiErrorItemSchema {
 }
 
 /**
+ * La `metadata` del sobre, descrita para el documento OpenAPI.
+ */
+export class ApiMetadataSchema {
+  /**
+   * El id que se puede citar al reportar la falla: el mismo de la línea de log.
+   * `null` si el error ocurrió fuera de una petición con contexto.
+   */
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    example: '3f2b8c1e-5d4a-4f6b-9a7c-2e1d0b9f8a6c',
+  })
+  traceId: string | null;
+}
+
+/**
  * El sobre con el que contesta todo endpoint de Nova, con `data` sin resolver.
  *
  * `ApiEnvelope` es lo que le pone forma a `data` en cada operación. Documentar
@@ -50,6 +67,14 @@ export class ApiEnvelopeSchema {
 
   @ApiProperty({ type: [ApiErrorItemSchema] })
   errors: ApiErrorItemSchema[];
+
+  // Opcional porque sólo la traen los errores: una respuesta exitosa lleva el
+  // id en la cabecera `x-request-id` y su cuerpo no cambió (ADR-031).
+  @ApiPropertyOptional({
+    type: ApiMetadataSchema,
+    description: 'Presente en las respuestas de error.',
+  })
+  metadata?: ApiMetadataSchema;
 }
 
 export type ApiEnvelopeOptions = {
@@ -108,9 +133,10 @@ export function ApiEnvelope<T extends Type<unknown>>(
  * Documenta los fallos de una operación con el mismo sobre, uno por estado.
  *
  * El código de error de cada uno sale de `statusToErrorCode`, que es la misma
- * función que usa el filtro de excepciones en tiempo de ejecución. Escribirlo a
- * mano dejaría que el documento y el servicio dijeran cosas distintas sin que
- * nada avise.
+ * función que usa el catálogo de errores de Nova en tiempo de ejecución.
+ * Escribirlo a mano dejaría que el documento y el servicio dijeran cosas
+ * distintas sin que nada avise. Un servicio que reemplaza el catálogo documenta
+ * sus propios códigos.
  *
  * @example
  * @ApiErrors(400, 404)
@@ -128,6 +154,9 @@ export function ApiErrors(
           allOf: [
             { $ref: getSchemaPath(ApiEnvelopeSchema) },
             {
+              // Un error siempre trae `metadata`, con el `traceId` que se cita
+              // al reportarlo; el sobre base la declara opcional por los éxitos.
+              required: ['metadata'],
               properties: {
                 success: { type: 'boolean', example: false },
                 status: { type: 'number', example: status },

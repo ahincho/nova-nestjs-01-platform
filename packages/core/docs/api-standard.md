@@ -15,6 +15,7 @@ type ApiResponse<T> = {
   status: number;
   data: T | null;
   errors: readonly ApiErrorItem[];
+  metadata?: ApiMetadata; // presente en los errores
 };
 
 type ApiErrorItem = {
@@ -22,10 +23,19 @@ type ApiErrorItem = {
   message: string;
   field: string | null;
 };
+
+type ApiMetadata = {
+  traceId: string | null;
+};
 ```
 
 `data` y `errors` son excluyentes por construcción: un éxito lleva `errors` vacío,
 un fallo lleva `data: null`.
+
+**`metadata.traceId` va en las respuestas de error** (ADR-031): es el id que un
+alumno puede citar al reportar la falla, el mismo de la línea de log. Un éxito no
+lo trae en el cuerpo -ya viaja en la cabecera `x-request-id`-, así que ningún
+cuerpo exitoso cambió. `ApiResponses.withMetadata` es lo que la agrega.
 
 ## Uso
 
@@ -56,9 +66,24 @@ y dejar pasar ahí un código de dominio cuenta qué falló por dentro.
 
 ## Por qué el cliente ramifica por `code` y no por `status`
 
-El `code` sobrevive a un cambio de transporte. Y **todo 5xx colapsa a
-`INTERNAL_SERVER_ERROR`** a propósito: distinguir un 502 de un 504 le cuenta al
-llamador cómo está armada la topología por dentro.
+El `code` sobrevive a un cambio de transporte. El catálogo es el de ADR-031, el
+mismo en los tres stacks:
+
+| Status | Código               | Status | Código                   |
+| ------ | -------------------- | ------ | ------------------------ |
+| 400    | `BAD_REQUEST`        | 410    | `GONE`                   |
+| 401    | `UNAUTHORIZED`       | 415    | `UNSUPPORTED_MEDIA_TYPE` |
+| 403    | `FORBIDDEN`          | 422    | `UNPROCESSABLE_ENTITY`   |
+| 404    | `NOT_FOUND`          | 429    | `TOO_MANY_REQUESTS`      |
+| 405    | `METHOD_NOT_ALLOWED` | 500    | `INTERNAL_SERVER_ERROR`  |
+| 406    | `NOT_ACCEPTABLE`     | 502    | `BAD_GATEWAY`            |
+| 408    | `REQUEST_TIMEOUT`    | 503    | `SERVICE_UNAVAILABLE`    |
+| 409    | `CONFLICT`           | 504    | `GATEWAY_TIMEOUT`        |
+
+Cualquier otro 4xx lleva `REQUEST_ERROR`, y cualquier otro 5xx,
+`INTERNAL_SERVER_ERROR`. **Hasta la 0.15 todo 5xx colapsaba a
+`INTERNAL_SERVER_ERROR`**; los tres con nombre propio le dicen al cliente si
+conviene reintentar sin nombrar al proveedor, que va sólo al log.
 
 ## Nada construye el sobre a mano
 

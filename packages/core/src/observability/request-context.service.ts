@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import { AsyncLocalStorage } from 'node:async_hooks';
 import type { RequestContext } from './request-context';
+import { requestContextStorage } from './request-context.storage';
 
 /**
  * Reads and carries the {@link RequestContext} of the request in flight.
@@ -9,21 +9,11 @@ import type { RequestContext } from './request-context';
  * `@ahincho/nova-nestjs-http`: it satisfies that port structurally, so the
  * aggregator can bind the two without either package importing the other.
  */
-/**
- * Lo que se guarda de verdad.
- *
- * Igual que un {@link RequestContext} salvo que sus cabeceras se pueden
- * escribir, que es lo que permite a `enrich` agregar lo que se sabe después de
- * abrir el contexto. La forma pública sigue siendo de sólo lectura.
- */
-type StoredContext = {
-  readonly requestId: string;
-  readonly headers: Record<string, string>;
-};
-
 @Injectable()
 export class RequestContextService {
-  private readonly storage = new AsyncLocalStorage<StoredContext>();
+  // El del proceso y no uno propio de la instancia: es el mismo que lee un
+  // error de Nova al construirse, sin pasar por la inyección (ADR-031).
+  private readonly storage = requestContextStorage;
 
   /**
    * Runs `callback` with `context` visible to everything it awaits.

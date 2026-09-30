@@ -31,6 +31,7 @@ Cada módulo tiene su carpeta en `src/` y su documento:
 | ---------------------------------------- | ---------------------------------------------------------- |
 | [`api-standard`](docs/api-standard.md)   | el sobre `{ success, status, data, errors }` y sus códigos |
 | [`api`](docs/api.md)                     | interceptor, filtro y `ValidationPipe` que lo aplican      |
+| [`errors`](docs/errors.md)               | errores por capa, sin Nest, y sus tres puertos (ADR-031)   |
 | [`auth`](docs/auth.md)                   | JWT opcional: guard global, `@Public()` y `@CurrentUser()` |
 | [`config`](docs/config.md)               | variables de entorno tipadas, upstreams y CORS             |
 | [`http`](docs/http.md)                   | cliente HTTP saliente con contexto y errores de upstream   |

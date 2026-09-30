@@ -1,4 +1,11 @@
+import { ApiStandardModule, ERROR_PORTS } from './api';
 import { NovaAuthModule } from './auth';
+import {
+  Layer,
+  NovaErrorCatalog,
+  type ErrorCatalog,
+  type ErrorPorts,
+} from './errors';
 import { OUTBOUND_HEADERS_PROVIDER } from './http';
 import { RequestContextService } from './observability';
 import { NovaModule } from './nova.module';
@@ -57,5 +64,53 @@ describe('NovaModule.forRoot', () => {
   // importing the platform again in every one of them.
   it('is global', () => {
     expect(NovaModule.forRoot().global).toBe(true);
+  });
+});
+
+describe('the errors option of NovaModule.forRoot', () => {
+  type ImportedModule = {
+    module?: unknown;
+    providers?: { provide: unknown; useValue?: unknown }[];
+  };
+
+  function portsOf(module: ReturnType<typeof NovaModule.forRoot>): ErrorPorts {
+    const apiStandard = (module.imports as ImportedModule[]).find(
+      (imported) => imported.module === ApiStandardModule,
+    );
+
+    return apiStandard?.providers?.find(
+      (provider) => provider.provide === ERROR_PORTS,
+    )?.useValue as ErrorPorts;
+  }
+
+  const catalog: ErrorCatalog = {
+    describe: () => ({ code: 'OWN', message: 'own' }),
+  };
+
+  it('reaches the exception filter of the envelope', () => {
+    expect(portsOf(NovaModule.forRoot({ errors: { catalog } })).catalog).toBe(
+      catalog,
+    );
+  });
+
+  it('leaves the Nova ports when it is not declared', () => {
+    expect(portsOf(NovaModule.forRoot()).catalog).toBeInstanceOf(
+      NovaErrorCatalog,
+    );
+  });
+
+  // Declararlo no se lleva lo demás de `apiStandard`.
+  it('keeps the rest of the envelope options', () => {
+    const module = NovaModule.forRoot({
+      apiStandard: { internalErrorMessage: 'Error interno del servidor' },
+      errors: {},
+    });
+
+    expect(
+      portsOf(module).catalog.describe(
+        { layer: Layer.PLATFORM, message: 'boom', fieldErrors: [] },
+        500,
+      ).message,
+    ).toBe('Error interno del servidor');
   });
 });

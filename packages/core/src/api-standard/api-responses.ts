@@ -1,5 +1,5 @@
 import type { ApiErrorItem } from './api-error';
-import type { ApiResponse } from './api-response';
+import type { ApiMetadata, ApiResponse } from './api-response';
 import { statusToErrorCode } from './error-code';
 
 /**
@@ -61,6 +61,23 @@ export const ApiResponses = {
       message,
       field: options.field ?? null,
     });
+  },
+
+  /**
+   * El mismo sobre, con su `metadata`.
+   *
+   * Es lo que usa el serializador de errores de Nova para poner el `traceId` en
+   * el cuerpo. Devuelve un objeto nuevo en vez de escribir sobre el recibido.
+   *
+   * @example
+   * const failure = ApiResponses.errorOf(404, 'Curso no encontrado');
+   * ApiResponses.withMetadata(failure, { traceId: 'b3f1c2d4' });
+   */
+  withMetadata<T>(
+    response: ApiResponse<T>,
+    metadata: ApiMetadata,
+  ): ApiResponse<T> {
+    return { ...response, metadata };
   },
 
   /**

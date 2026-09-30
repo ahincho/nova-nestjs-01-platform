@@ -14,7 +14,10 @@ export { ResponseWrapperInterceptor } from './interceptors/response-wrapper.inte
 export {
   API_STANDARD_OPTIONS,
   DEFAULT_API_STANDARD_OPTIONS,
+  ERROR_PORTS,
   resolveApiStandardOptions,
+  resolveErrorPorts,
   type ApiStandardModuleOptions,
+  type NovaErrorsOptions,
   type ResolvedApiStandardOptions,
 } from './tokens';

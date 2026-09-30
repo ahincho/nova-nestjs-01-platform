@@ -64,21 +64,33 @@ sigue siendo 200, así que el target group sigue pasando y nada delata el cambio
 
 ## Opciones
 
-| Opción                 | Por defecto               | Para qué                       |
-| ---------------------- | ------------------------- | ------------------------------ |
-| `wrapResponses`        | `true`                    | registra el interceptor global |
-| `catchExceptions`      | `true`                    | registra el filtro global      |
-| `internalErrorMessage` | `'Internal server error'` | mensaje de todo 5xx            |
+| Opción                 | Por defecto               | Para qué                                    |
+| ---------------------- | ------------------------- | ------------------------------------------- |
+| `wrapResponses`        | `true`                    | registra el interceptor global              |
+| `catchExceptions`      | `true`                    | registra el filtro global                   |
+| `internalErrorMessage` | `'Internal server error'` | mensaje de todo 5xx con el catálogo de Nova |
+| `errors`               | los puertos de Nova       | catálogo, status y cuerpo de los errores    |
 
-## Dos decisiones que conviene conocer
+Dentro de `NovaModule`, los puertos se declaran en su propia opción:
+`NovaModule.forRoot({ errors: { catalog, statusMapper, serializer } })`. Qué
+decide cada uno está en [errors.md](errors.md).
+
+## Tres decisiones que conviene conocer
 
 **Ningún 5xx llega con su mensaje real.** `connect ECONNREFUSED 10.0.3.14:5432`
-va al log; el cliente recibe el mensaje genérico. Distinguir un 502 de un 504 le
-cuenta al llamador cómo está armada la topología.
+va al log; el cliente recibe el mensaje genérico y el código de su status, que es
+`BAD_GATEWAY`, `SERVICE_UNAVAILABLE`, `GATEWAY_TIMEOUT` o `INTERNAL_SERVER_ERROR`.
+Alcanza para decidir si reintentar sin nombrar al proveedor.
 
 **Un 4xx se registra como `warn`, no como `error`.** El 4xx es el cliente
 equivocándose, no una falla nuestra; registrarlo como error entierra los 5xx que
-sí importan.
+sí importan. Un 5xx va en `error` con su causa encadenada.
+
+**Cada línea lleva la capa como campo** (ADR-031): `traceId`, `layer`, `type`,
+`code` y, si hay, `upstream`, además de `status`, `method` y `path`. El
+`traceId` es el mismo que el cliente ve en `metadata.traceId`. Una excepción del
+framework se lee por su status: un 4xx es `application`, un 502, 503 o 504 es
+`infrastructure`, y lo demás, `platform`.
 
 El filtro escribe con el `Logger` de Nest, así que si la aplicación instaló pino
 con `app.useLogger()`, estas entradas salen en ese formato. El paquete no depende

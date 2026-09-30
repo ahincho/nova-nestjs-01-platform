@@ -65,6 +65,11 @@ try {
 }
 ```
 
+El `UpstreamHttpError` que se deja escapar, como el `throw error` de arriba, el
+filtro global lo contesta como un error de `infrastructure` (ADR-031): 504 si el
+upstream contestó 504 o 408, y 502 si contestó otra cosa. Hasta la 0.15 salía
+como 500.
+
 **El log nunca lleva el cuerpo ni el query string.** Un cuerpo de error del
 upstream suele devolver los identificadores de la persona sobre la que era la
 petición, y un query string los lleva directamente. Del URL se registra sólo

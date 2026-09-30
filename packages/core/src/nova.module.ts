@@ -1,5 +1,9 @@
 import { Module, type DynamicModule, type Provider } from '@nestjs/common';
-import { ApiStandardModule, type ApiStandardModuleOptions } from './api';
+import {
+  ApiStandardModule,
+  type ApiStandardModuleOptions,
+  type NovaErrorsOptions,
+} from './api';
 import { NovaAuthModule, type NovaAuthModuleOptions } from './auth';
 import { NovaConfigModule, type NovaConfigModuleOptions } from './config';
 import { NovaHealthModule, type NovaHealthModuleOptions } from './health';
@@ -20,6 +24,18 @@ export type NovaModuleOptions = {
 
   /** Response envelope and global exception filter. */
   readonly apiStandard?: ApiStandardModuleOptions;
+
+  /**
+   * Los puertos del módulo de errores (ADR-031): el catálogo de códigos, el
+   * status de cada capa y tipo, y el cuerpo de la respuesta. El que no se
+   * declara queda con el de Nova, y un perfil de organización trae los suyos.
+   *
+   * Es lo mismo que `apiStandard.errors`; si están los dos, gana éste.
+   *
+   * @example
+   * NovaModule.forRoot({ errors: { catalog: organizationCatalog } });
+   */
+  readonly errors?: NovaErrorsOptions;
 
   /** Request context and correlation headers. */
   readonly observability?: NovaObservabilityModuleOptions;
@@ -66,7 +82,11 @@ export type NovaModuleOptions = {
 export class NovaModule {
   static forRoot(options: NovaModuleOptions = {}): DynamicModule {
     const imports: DynamicModule['imports'] = [
-      ApiStandardModule.forRoot(options.apiStandard),
+      ApiStandardModule.forRoot(
+        options.errors === undefined
+          ? options.apiStandard
+          : { ...options.apiStandard, errors: options.errors },
+      ),
       NovaObservabilityModule.forRoot(options.observability),
       NovaHttpModule.forRoot(options.http),
       NovaHealthModule.forRoot(options.health),

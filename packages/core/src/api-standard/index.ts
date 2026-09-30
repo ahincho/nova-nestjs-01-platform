@@ -1,6 +1,6 @@
 export type { ApiErrorItem } from './api-error';
 export { errorItem } from './api-error';
-export type { ApiResponse } from './api-response';
+export type { ApiMetadata, ApiResponse } from './api-response';
 export type { ErrorOptions } from './api-responses';
 export { ApiResponses } from './api-responses';
 export {
