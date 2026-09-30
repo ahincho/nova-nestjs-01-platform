@@ -93,6 +93,20 @@ describe('buildRequestContext', () => {
     expect(context.headers).not.toHaveProperty('x-user-id');
   });
 
+  // El BFF no aplica la idempotencia: la clave tiene que llegar al servicio que
+  // la aplica, y tal como la mandó el cliente (ADR-047).
+  it('carries the idempotency key to the upstreams', () => {
+    const context = build({
+      'x-request-id': 'req-1',
+      'Idempotency-Key': 'purchase-42',
+    });
+
+    expect(context.headers).toEqual({
+      'x-request-id': 'req-1',
+      'idempotency-key': 'purchase-42',
+    });
+  });
+
   it('takes the first value of a repeated header', () => {
     expect(build({ 'x-request-id': ['req-1', 'req-2'] }).requestId).toBe(
       'req-1',

@@ -33,9 +33,10 @@ de DI, y por eso cada uno funciona sin el otro.
 
 ### Qué se propaga
 
-Por defecto `x-request-id`, `x-user-id` y `x-tenant-id`. El primero es el id de
-correlación y **se genera cuando el llamador no lo mandó**; los demás viajan sólo
-si venían. Una cabecera ausente o vacía se omite: un `x-user-id` vacío aguas
+Por defecto `x-request-id`, `x-user-id`, `x-tenant-id` e `idempotency-key`. El
+primero es el id de correlación y **se genera cuando el llamador no lo mandó**; los
+demás viajan sólo si venían. La clave de idempotencia viaja para que la reciba el
+servicio que aplica la idempotencia, como pedidos en Plaza (ADR-047). Una cabecera ausente o vacía se omite: un `x-user-id` vacío aguas
 abajo se lee como "hay un usuario y no tiene id", que es peor que no decir nada.
 
 El id se devuelve además en la respuesta, para que el llamador pueda reportar una
@@ -154,10 +155,10 @@ espera un documento JSON por línea.
 
 ## Opciones
 
-| Opción               | Por defecto                                    | Para qué                            |
-| -------------------- | ---------------------------------------------- | ----------------------------------- |
-| `correlationHeaders` | `['x-request-id', 'x-user-id', 'x-tenant-id']` | qué se propaga; la primera es el id |
-| `requestId.accept`   | la primera de `correlationHeaders`             | de dónde se toma el id del llamador |
-| `requestId.echo`     | la primera de `accept`                         | con qué nombre se devuelve          |
-| `generateId`         | `crypto.randomUUID`                            | cómo se genera un id ausente        |
-| `echoRequestId`      | `true`                                         | devolver el id en la respuesta      |
+| Opción               | Por defecto                                                       | Para qué                            |
+| -------------------- | ----------------------------------------------------------------- | ----------------------------------- |
+| `correlationHeaders` | `['x-request-id', 'x-user-id', 'x-tenant-id', 'idempotency-key']` | qué se propaga; la primera es el id |
+| `requestId.accept`   | la primera de `correlationHeaders`                                | de dónde se toma el id del llamador |
+| `requestId.echo`     | la primera de `accept`                                            | con qué nombre se devuelve          |
+| `generateId`         | `crypto.randomUUID`                                               | cómo se genera un id ausente        |
+| `echoRequestId`      | `true`                                                            | devolver el id en la respuesta      |

@@ -134,7 +134,11 @@ describe('bootstrap', () => {
           'transaction-id',
           'x-request-id',
         ]) as string[],
-        exposedHeaders: ['transaction-id'],
+        exposedHeaders: [
+          'transaction-id',
+          'Idempotent-Replayed',
+          'Retry-After',
+        ],
       }),
     );
   });
