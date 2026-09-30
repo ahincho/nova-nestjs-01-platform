@@ -29,7 +29,16 @@ const DEFAULT_ALLOWED_HEADERS = [
   'Content-Type',
   'Authorization',
   'x-request-id',
+  // Una compra que se reintenta desde el navegador lleva su clave (ADR-047).
+  'Idempotency-Key',
 ];
+
+/**
+ * Lo que el script tiene que poder leer de una operación idempotente (ADR-047):
+ * si la respuesta es una repetida y cuánto esperar ante un 409. Ninguna de las dos
+ * es una cabecera simple, así que sin esto el navegador las esconde.
+ */
+const IDEMPOTENCY_EXPOSED_HEADERS = ['Idempotent-Replayed', 'Retry-After'];
 
 function unique(headers: readonly string[]): string[] {
   const seen = new Set<string>();
@@ -83,9 +92,12 @@ export function buildCorsOptions(
     // A browser hides a non-simple response header from JavaScript unless the
     // server lists it here, so without this the correlation id set on the
     // response is unreadable by the caller that needs it to report a failure.
-    exposedHeaders: requestId
-      ? unique([requestId.echo, ...(options.exposedHeaders ?? [])])
-      : [...(options.exposedHeaders ?? ['x-request-id'])],
+    exposedHeaders: unique([
+      ...(requestId
+        ? [requestId.echo, ...(options.exposedHeaders ?? [])]
+        : (options.exposedHeaders ?? ['x-request-id'])),
+      ...IDEMPOTENCY_EXPOSED_HEADERS,
+    ]),
 
     // Authorization is not a simple header, so every call is preceded by an
     // OPTIONS. Without this the preflight repeats on every single request.

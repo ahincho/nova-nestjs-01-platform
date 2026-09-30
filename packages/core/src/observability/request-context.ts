@@ -28,6 +28,9 @@ export const DEFAULT_CORRELATION_HEADERS = [
   'x-request-id',
   'x-user-id',
   'x-tenant-id',
+  // Un BFF no tiene estado y no aplica la idempotencia: pasa la clave al servicio
+  // que sí la aplica, como pedidos en Plaza (ADR-047).
+  'idempotency-key',
 ] as const;
 
 export type IncomingHeaders = Readonly<

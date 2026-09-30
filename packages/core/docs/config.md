@@ -134,6 +134,11 @@ configuró falla cerrado. Las credenciales quedan en `false` a propósito: la
 autenticación viaja en `Authorization`, y credenciales más origen reflejado es la
 combinación que filtra una sesión.
 
+La política permite `Idempotency-Key`, para que un navegador pueda reintentar una
+compra con su clave, y expone `Idempotent-Replayed` y `Retry-After`, para que el
+script sepa si la respuesta es una repetida y cuánto esperar ante un 409
+(ADR-047). El BFF no aplica la idempotencia: la pasa al servicio que la aplica.
+
 ## Módulo
 
 ```ts
