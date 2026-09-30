@@ -35,7 +35,9 @@ un fallo lleva `data: null`.
 **`metadata.traceId` va en las respuestas de error** (ADR-031): es el id que un
 alumno puede citar al reportar la falla, el mismo de la línea de log. Un éxito no
 lo trae en el cuerpo -ya viaja en la cabecera `x-request-id`-, así que ningún
-cuerpo exitoso cambió. `ApiResponses.withMetadata` es lo que la agrega.
+cuerpo exitoso cambió. El filtro global siempre lo pone, y la clave nunca falta:
+`null` sólo lo escribe un serializador que no tenga el id.
+`ApiResponses.withMetadata` es lo que la agrega.
 
 ## Uso
 

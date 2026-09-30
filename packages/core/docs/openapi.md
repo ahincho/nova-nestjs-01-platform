@@ -77,9 +77,15 @@ findAll(): Promise<CourseResponse[]> {
 ```
 
 `ApiErrors` documenta los fallos con el mismo sobre, y **el código de cada uno
-sale de `statusToErrorCode`**, que es la misma función que usa el filtro de
-excepciones en tiempo de ejecución. Escribirlo a mano dejaría que el documento y
-el servicio se contradijeran sin que nada avise.
+sale de `statusToErrorCode`**, que es la misma función que usa el catálogo de
+Nova en tiempo de ejecución. Escribirlo a mano dejaría que el documento y el
+servicio se contradijeran sin que nada avise. Un servicio que reemplaza el
+catálogo contesta sus propios códigos, y en ese caso es el servicio quien tiene
+que declararlos en el documento.
+
+Cada fallo documentado declara además `metadata.traceId` como requerido (ADR-031):
+es el id que se cita al reportar la falla. En el sobre base es opcional, porque un
+éxito no lo trae.
 
 ## El token
 

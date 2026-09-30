@@ -82,9 +82,13 @@ va al log; el cliente recibe el mensaje genérico y el código de su status, que
 `BAD_GATEWAY`, `SERVICE_UNAVAILABLE`, `GATEWAY_TIMEOUT` o `INTERNAL_SERVER_ERROR`.
 Alcanza para decidir si reintentar sin nombrar al proveedor.
 
-**Un 4xx se registra como `warn`, no como `error`.** El 4xx es el cliente
-equivocándose, no una falla nuestra; registrarlo como error entierra los 5xx que
-sí importan. Un 5xx va en `error` con su causa encadenada.
+**Lo esperado se registra como `warn`, no como `error`.** Un 4xx es el cliente
+equivocándose o una regla de negocio que dijo que no, no una falla nuestra;
+registrarlo como error entierra los incidentes que sí importan. Lo que decide el
+nivel es la capa (ADR-031) y no el status: `domain` y `application` van en
+`warn`, sin stack, e `infrastructure` y `platform` van en `error`, con su causa
+encadenada. Con los puertos de Nova es lo mismo que mirar si el status es 5xx, y
+un `ErrorStatusMapper` propio no mueve la señal.
 
 **Cada línea lleva la capa como campo** (ADR-031): `traceId`, `layer`, `type`,
 `code` y, si hay, `upstream`, además de `status`, `method` y `path`. El

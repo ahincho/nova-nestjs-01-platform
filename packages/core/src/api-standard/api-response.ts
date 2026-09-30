@@ -11,9 +11,9 @@ import type { ApiErrorItem } from './api-error';
  */
 export type ApiMetadata = {
   /**
-   * El id de la petición que falló. `null` cuando el error ocurrió fuera de una
-   * petición con contexto, nunca ausente: quien lo lee encuentra la clave en
-   * los dos casos.
+   * El id de la petición que falló. El filtro global siempre lo pone; `null`
+   * sólo si otro serializador no lo tiene, y nunca ausente: quien lo lee
+   * encuentra la clave en los dos casos.
    */
   readonly traceId: string | null;
 };

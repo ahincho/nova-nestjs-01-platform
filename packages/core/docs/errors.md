@@ -86,6 +86,13 @@ curso, y no al responder, cuando el contexto se puede haber perdido. En NestJS e
 el id de correlación, el mismo de `x-request-id`. Fuera de una petición -un job,
 un consumidor- el error nace sin él, y construirlo nunca lanza.
 
+Al contestar, el filtro busca el id en este orden: el del error, el de la petición
+en curso y el de `req.id`. Si ninguno existe, porque el error ocurrió antes de que
+el middleware abriera el contexto -un cuerpo JSON que no se puede leer falla en el
+`body-parser`, antes que cualquier middleware del módulo-, genera uno nuevo. Se
+escribe igual en el cuerpo y en el log, así que el cliente nunca se queda sin algo
+que citar.
+
 ## Lo que ya existía
 
 - Una `HttpException` conserva su status, su `errorCode` y su mensaje, y se lee
@@ -126,6 +133,37 @@ NovaModule.forRoot({ errors: { catalog: organizationCatalog } });
 `ErrorStatusMapper` sólo se consulta para los errores de Nova: una excepción del
 framework ya trae su status. Sin catálogo propio, `apiStandard.internalErrorMessage`
 sigue siendo el mensaje de todo 5xx.
+
+Otro formato de cuerpo es otro `ErrorSerializer`, como RFC 7807. El `Content-Type`
+viaja en las cabeceras que devuelve, y el status y el código llegan ya decididos
+en `reply`:
+
+```ts
+import type { ErrorSerializer } from '@ahincho/nova-nestjs/errors';
+
+const problemDetails: ErrorSerializer = {
+  serialize: (_error, reply) => ({
+    headers: { 'Content-Type': 'application/problem+json' },
+    body: {
+      type: 'about:blank',
+      title: reply.code,
+      status: reply.status,
+      detail: reply.message,
+      traceId: reply.traceId,
+    },
+  }),
+};
+
+NovaModule.forRoot({ errors: { serializer: problemDetails } });
+```
+
+**La regla del 5xx pasa a ser de quien escribe el puerto.** El error que reciben
+los puertos trae lo que va sólo al log -`upstream`, `cause` y el mensaje real de
+una falla interna-, y con los puertos de Nova ese detalle nunca sale en un 5xx.
+Un catálogo o un serializador propio que lo escriba en el cuerpo rompe la regla
+que existe para no contarle la topología al cliente. Para un 5xx conviene tomar
+el código y el mensaje de `reply`, que ya vienen decididos por el catálogo, y no
+leerlos del error.
 
 ## Lo que no hay
 

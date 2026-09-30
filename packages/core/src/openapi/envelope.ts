@@ -36,7 +36,8 @@ export class ApiErrorItemSchema {
 export class ApiMetadataSchema {
   /**
    * El id que se puede citar al reportar la falla: el mismo de la línea de log.
-   * `null` si el error ocurrió fuera de una petición con contexto.
+   * El filtro global siempre lo pone; `null` sólo si otro serializador no lo
+   * tiene.
    */
   @ApiProperty({
     type: String,

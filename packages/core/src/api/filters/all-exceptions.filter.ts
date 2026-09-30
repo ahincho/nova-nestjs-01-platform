@@ -7,6 +7,7 @@ import {
   type ArgumentsHost,
   type ExceptionFilter,
 } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
 import type { ApiErrorItem } from '../../api-standard';
 import {
   ApplicationErrorType,
@@ -91,6 +92,14 @@ function classifyStatus(status: number): {
   return type === undefined
     ? { layer: Layer.PLATFORM, type: PlatformErrorType.INTERNAL }
     : { layer: Layer.INFRASTRUCTURE, type };
+}
+
+/**
+ * Si la capa es de las que despiertan a alguien: `infrastructure` y `platform`
+ * son incidentes; `domain` y `application` son esperados (ADR-031).
+ */
+function isIncident(layer: Layer): boolean {
+  return layer === Layer.INFRASTRUCTURE || layer === Layer.PLATFORM;
 }
 
 function messageOf(exception: HttpException): string {
@@ -223,8 +232,13 @@ export class AllExceptionsFilter implements ExceptionFilter {
       ...this.ports.catalog.describe(error, status),
       status,
       // El que el error tomó al nacer. Si nació fuera de una petición, el de la
-      // que se está contestando, que el middleware también deja en `req.id`.
-      traceId: error.traceId ?? currentRequestId() ?? request.id,
+      // que se está contestando, que el middleware también deja en `req.id`. Si
+      // ni ése existe -el error ocurrió antes de que el middleware abriera el
+      // contexto, como un cuerpo JSON que no se puede leer-, uno nuevo: sin él el
+      // cliente no tiene nada que citar, y el log lleva el mismo valor que el
+      // cuerpo.
+      traceId:
+        error.traceId ?? currentRequestId() ?? request.id ?? randomUUID(),
     };
     const { headers, body } = this.ports.serializer.serialize(error, reply);
 
@@ -304,9 +318,14 @@ export class AllExceptionsFilter implements ExceptionFilter {
       path: request.url,
     };
 
-    // A 4xx is the client being told it got something wrong, not a fault of
-    // ours. Logging it at error level is what buries the 5xx that matter.
-    if (reply.status >= 500) {
+    // El nivel lo decide la capa y no el status (ADR-031): `domain` y
+    // `application` son esperados y van en `warn`, sin stack; `infrastructure` y
+    // `platform` son incidentes y van en `error`, con la causa completa. Con los
+    // puertos de Nova da lo mismo que mirar si el status es 5xx, pero un
+    // `ErrorStatusMapper` propio puede mover un tipo a otro status, y la señal
+    // que alimenta la alerta no tiene que moverse con él. Registrar lo esperado
+    // como `error` es lo que entierra los incidentes que importan.
+    if (isIncident(error.layer)) {
       this.logger.error(detail, stackOf(exception));
       return;
     }

@@ -20,8 +20,9 @@ export type ErrorReply = ErrorDescription & {
   readonly status: number;
   /**
    * El id que se puede citar: el que el error tomó al nacer, o si no tomó
-   * ninguno, el de la petición que se está contestando. Ausente sólo fuera de
-   * una petición con contexto.
+   * ninguno, el de la petición que se está contestando y, si tampoco hay, uno
+   * nuevo. El filtro global siempre lo pone; ausente sólo si quien llama al
+   * puerto a mano no lo tiene.
    */
   readonly traceId?: string;
 };

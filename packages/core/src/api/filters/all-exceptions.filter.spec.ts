@@ -608,10 +608,18 @@ describe('AllExceptionsFilter', () => {
       expect((captured.body as Envelope).metadata?.traceId).toBe('req-1');
     });
 
-    it('is null, never absent, when nothing knows it', () => {
+    // Un cuerpo JSON que no se puede leer falla antes de que el middleware abra
+    // el contexto: ni el error ni la petición traen id. El cliente no se va sin
+    // algo que citar, y el log lleva el mismo valor que el cuerpo.
+    it('is minted, and logged, when nothing knows it', () => {
       filter.catch(DomainError.notFound('x'), hostDouble(captured, 'http', {}));
 
-      expect((captured.body as Envelope).metadata).toEqual({ traceId: null });
+      const { metadata } = captured.body as Envelope;
+
+      expect(metadata?.traceId).toMatch(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u,
+      );
+      expect(lastWarn()['traceId']).toBe(metadata?.traceId);
     });
 
     it('goes into the log line with the same value as the body', () => {
@@ -633,6 +641,32 @@ describe('AllExceptionsFilter', () => {
 
       filter.catch(new Error('boom'), hostDouble(captured));
       expect(errorLog).toHaveBeenCalledTimes(1);
+    });
+
+    // El nivel lo decide la capa y no el status: un `ErrorStatusMapper` propio
+    // puede mover un tipo a otro status sin mover la señal de los incidentes.
+    it('logs an expected error as a warning even if its status is a 5xx', () => {
+      filter = withPorts({ statusMapper: { statusOf: () => 503 } });
+
+      catchInRequest(() => DomainError.notFound('x'));
+
+      expect(captured.status).toBe(503);
+      expect(warnLog).toHaveBeenCalledTimes(1);
+      expect(errorLog).not.toHaveBeenCalled();
+      expect(warnLog.mock.lastCall).toHaveLength(1);
+    });
+
+    it('logs an incident as an error even if its status is a 4xx', () => {
+      filter = withPorts({ statusMapper: { statusOf: () => 408 } });
+
+      catchInRequest(() => InfrastructureError.timeout('payments'));
+
+      expect(captured.status).toBe(408);
+      expect(warnLog).not.toHaveBeenCalled();
+      expect(errorLog).toHaveBeenCalledTimes(1);
+      expect(lastError().stack).toContain(
+        'Upstream payments did not respond in time',
+      );
     });
 
     // Un error esperado va sin stack, que es lo que hace ruido en el índice.
