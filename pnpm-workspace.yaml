@@ -14,8 +14,17 @@ packages:
 # opcional del resolutor de imports de ESLint, que cae a su implementación en
 # JavaScript cuando no está compilado. @parcel/watcher estaba acá por el modo
 # --watch de Jest y salió del árbol junto con él.
+#
+# Los tres siguientes llegan con testcontainers, que solo usan las pruebas de los
+# almacenes de secretos. `ssh2` y `cpu-features` compilan un binario nativo
+# para hablar con un Docker remoto por SSH, que las pruebas no usan: sin él, ssh2
+# cae a su implementación en JavaScript. El script de `protobufjs` solo avisa
+# si la versión instalada es vieja.
 allowBuilds:
   '@scarf/scarf': false
+  cpu-features: false
+  protobufjs: false
+  ssh2: false
   unrs-resolver: false
 
 # Lo único que queda compartido por catálogo. Las versiones de las
