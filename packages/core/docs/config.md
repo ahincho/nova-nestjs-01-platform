@@ -172,7 +172,7 @@ plataforma no lo usa, parsear el JSON es responsabilidad de la aplicación: es e
 contrato, no un parche.
 
 ```ts
-void bootstrap(AppModule, { secrets: { prefix: 'SECRET_' } });
+void bootstrap(AppModule, { secrets: { prefix: 'CREDENTIALS_' } });
 ```
 
 Corre **antes de que exista la aplicación**, porque cada `registerAs` valida sus
@@ -195,7 +195,7 @@ Tres fuentes, y se suman:
 
 | Fuente         | Para qué                                                             |
 | -------------- | -------------------------------------------------------------------- |
-| `prefix`       | la convención de la organización — `{ prefix: 'SECRET_' }`           |
+| `prefix`       | la convención de la organización — `{ prefix: 'CREDENTIALS_' }`      |
 | `variables`    | el servicio nombra la suya — `{ variables: ['LEGACY_CREDENTIALS'] }` |
 | `NOVA_SECRETS` | operaciones la agrega a la task definition, sin tocar el código      |
 

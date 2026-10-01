@@ -34,7 +34,7 @@ export const acme = defineProfile({
 
   bootstrap: {
     portVariables: ['APP_PORT', 'PORT'],
-    secrets: { prefix: 'SECRET_' },
+    secrets: { prefix: 'CREDENTIALS_' },
     globalPrefix: 'api/v1',
   },
 
