@@ -50,6 +50,49 @@ describe('buildCorsOptions', () => {
     expect(options.exposedHeaders).toEqual(['x-request-id', 'x-total-count']);
   });
 
+  // Un borde que recibe el id con su propio nombre no sirve si el navegador no
+  // puede mandarlo, ni si el script no puede leer el que vuelve (ADR-037).
+  it('lets the browser send and read the edge request id headers', () => {
+    const options = buildCorsOptions(
+      { origins: 'https://nova.example.edu' },
+      { accept: ['transaction-id', 'x-request-id'], echo: 'transaction-id' },
+    );
+
+    expect(options.allowedHeaders).toEqual([
+      'Content-Type',
+      'Authorization',
+      'x-request-id',
+      'transaction-id',
+    ]);
+    expect(options.exposedHeaders).toEqual(['transaction-id']);
+  });
+
+  it('exposes the echoed header next to the ones a service declares', () => {
+    const options = buildCorsOptions(
+      {
+        origins: 'https://nova.example.edu',
+        exposedHeaders: ['x-total-count'],
+      },
+      { accept: ['x-request-id'], echo: 'x-request-id' },
+    );
+
+    expect(options.exposedHeaders).toEqual(['x-request-id', 'x-total-count']);
+  });
+
+  it('lists a header once however many times it is declared', () => {
+    const options = buildCorsOptions(
+      { origins: '', allowedHeaders: ['X-Request-Id', 'transaction-id'] },
+      { accept: ['transaction-id'], echo: 'transaction-id' },
+    );
+
+    expect(options.allowedHeaders).toEqual([
+      'Content-Type',
+      'Authorization',
+      'x-request-id',
+      'transaction-id',
+    ]);
+  });
+
   // Without it the preflight repeats on every single request, because
   // Authorization is not a simple header.
   it('caches the preflight for a day by default', () => {

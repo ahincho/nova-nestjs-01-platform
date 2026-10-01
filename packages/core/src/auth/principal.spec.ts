@@ -1,8 +1,27 @@
 import { UnauthorizedException } from '@nestjs/common';
 import { resolvePrincipal } from './principal';
-import { resolveAuthOptions } from './tokens';
+import {
+  normalizeUserId,
+  resolveAuthOptions,
+  type NovaAuthModuleOptions,
+} from './tokens';
 
-const options = resolveAuthOptions({ preferredRoles: ['student'] });
+/**
+ * Cómo se lee un token de Keycloak, declarado como lo haría el perfil de una
+ * organización. La mayoría de estas pruebas usa esta forma porque cubre todos
+ * los caminos de la resolución: claim anidado, roles técnicos, normalización.
+ */
+const keycloak: NovaAuthModuleOptions = {
+  rolesClaim: 'realm_access.roles',
+  ignoredRoles: ['offline_access', 'uma_authorization'],
+  ignoredRolePrefixes: ['default-roles-'],
+  normalizeId: normalizeUserId,
+};
+
+const options = resolveAuthOptions({
+  ...keycloak,
+  preferredRoles: ['student'],
+});
 
 function claims(overrides: Record<string, unknown> = {}) {
   return {
@@ -30,14 +49,15 @@ describe('resolvePrincipal', () => {
     // arroba del medio se queda: recortarla inventaría un identificador.
     it('keeps an at sign that is not the first character', () => {
       const principal = resolvePrincipal(
-        claims({ preferred_username: 'ana@utp.edu.pe' }),
+        claims({ preferred_username: 'ana@example.edu' }),
         options,
       );
-      expect(principal.id).toBe('ANA@UTP.EDU.PE');
+      expect(principal.id).toBe('ANA@EXAMPLE.EDU');
     });
 
     it('can be normalised by the application', () => {
       const lowercase = resolveAuthOptions({
+        ...keycloak,
         normalizeId: (raw) => raw.toLowerCase(),
       });
       expect(resolvePrincipal(claims(), lowercase).id).toBe('@u12345');
@@ -129,14 +149,44 @@ describe('resolvePrincipal', () => {
         UnauthorizedException,
       );
     });
+  });
 
-    it('can live under another claim', () => {
-      const custom = resolveAuthOptions({ rolesClaim: 'roles' });
+  // Sin perfil, lo que se lee es lo que dicen los estándares y nada de un
+  // proveedor: `preferred_username` de OpenID Connect y `roles` de RFC 9068.
+  describe('with the generic defaults', () => {
+    const generic = resolveAuthOptions();
+
+    it('reads the roles of RFC 9068', () => {
       const principal = resolvePrincipal(
         { preferred_username: 'ana', roles: ['admin'] },
-        custom,
+        generic,
       );
       expect(principal.role).toBe('admin');
+    });
+
+    // Cualquier otra transformación sería inventar la convención de alguien.
+    it('keeps the identifier as the issuer wrote it, trimmed', () => {
+      const principal = resolvePrincipal(
+        { preferred_username: '  @Ana  ', roles: ['admin'] },
+        generic,
+      );
+      expect(principal.id).toBe('@Ana');
+    });
+
+    it('does not know the technical roles of any provider', () => {
+      const principal = resolvePrincipal(
+        { preferred_username: 'ana', roles: ['offline_access', 'admin'] },
+        generic,
+      );
+      expect(principal.role).toBe('offline_access');
+    });
+
+    // Un token de Keycloak sin su perfil no tiene roles donde se buscan, y eso
+    // es un 401, no un usuario sin rol.
+    it('rejects a Keycloak token without the profile that reads it', () => {
+      expect(() => resolvePrincipal(claims(), generic)).toThrow(
+        UnauthorizedException,
+      );
     });
   });
 

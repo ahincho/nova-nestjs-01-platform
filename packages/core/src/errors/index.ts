@@ -2,6 +2,15 @@
 // acá importa Nest ni ningún otro framework web (ADR-031): lo verifican una
 // regla de oxlint y `framework-free.spec.ts`, que sigue también los imports que
 // salen de esta carpeta.
+//
+// Los tipos del fallo saneado que reciben los puertos, para que quien escribe
+// uno los nombre sin traer el paquete principal.
+export type {
+  ApiFailure,
+  ApiFailureItem,
+  ApiFailureKind,
+  ApiWire,
+} from '../api-standard/api-standard';
 export {
   ApplicationError,
   type ApplicationErrorInit,
@@ -38,10 +47,10 @@ export {
 export { PlatformError, type PlatformErrorOptions } from './platform-error';
 export type {
   ErrorCatalog,
+  ErrorClassification,
   ErrorDescription,
   ErrorPorts,
-  ErrorReply,
   ErrorSerializer,
   ErrorStatusMapper,
-  SerializedError,
+  SanitizedError,
 } from './ports';

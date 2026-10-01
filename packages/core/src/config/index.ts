@@ -5,7 +5,11 @@ export {
   appEnvironment,
   type AppEnvironment,
 } from './app-environment';
-export { buildCorsOptions, type CorsPolicyOptions } from './cors';
+export {
+  buildCorsOptions,
+  type CorsPolicyOptions,
+  type CorsRequestIdHeaders,
+} from './cors';
 export {
   EnvironmentError,
   booleanEnv,
@@ -18,6 +22,13 @@ export {
   NovaConfigModule,
   type NovaConfigModuleOptions,
 } from './nova-config.module';
+export {
+  SECRET_VARIABLES_VARIABLE,
+  SecretUnfoldError,
+  secretVariables,
+  unfoldSecrets,
+  type UnfoldSecretsOptions,
+} from './secrets';
 export {
   DEFAULT_UPSTREAM_TIMEOUT_MS,
   defineUpstream,

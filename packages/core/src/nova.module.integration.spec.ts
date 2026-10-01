@@ -19,6 +19,7 @@ import {
   type ErrorSerializer,
   type ErrorStatusMapper,
 } from './errors';
+import { statusToErrorMessage } from './api-standard/error-message';
 import { NovaModule, type NovaModuleOptions } from './nova.module';
 import type { MockInstance } from 'vitest';
 
@@ -296,7 +297,9 @@ describe('the errors of a Nova service', () => {
     ])('does not reveal what failed inside on GET %s', async (path, secret) => {
       const answer = await get(`${url}${path}`);
 
-      expect(answer.body.errors[0]?.message).toBe('Internal server error');
+      expect(answer.body.errors[0]?.message).toBe(
+        statusToErrorMessage(answer.status),
+      );
       expect(JSON.stringify(answer)).not.toContain(secret);
     });
 
@@ -310,7 +313,9 @@ describe('the errors of a Nova service', () => {
         traceId: answer.body.metadata?.traceId,
         layer: Layer.INFRASTRUCTURE,
         code: 'GATEWAY_TIMEOUT',
-        upstream: 'academic-orchestrator',
+        // Siempre un objeto (ADR-035): un campo con dos formas rechaza líneas
+        // enteras en el índice de logs.
+        upstream: { upstream: 'academic-orchestrator' },
       });
     });
 
@@ -393,15 +398,16 @@ describe('the errors of a Nova service', () => {
         error.layer === Layer.DOMAIN ? 422 : nova.statusOf(error),
     };
 
+    // Recibe el fallo ya saneado: un 5xx llega sin el proveedor ni la causa.
     const serializer: ErrorSerializer = {
-      serialize: (_error, reply) => ({
-        headers: { 'Content-Type': 'application/problem+json' },
+      serialize: (failure) => ({
+        contentType: 'application/problem+json',
         body: {
           type: 'about:blank',
-          title: reply.code,
-          status: reply.status,
-          detail: reply.message,
-          traceId: reply.traceId,
+          title: failure.errors[0]?.code,
+          status: failure.status,
+          detail: failure.errors[0]?.message,
+          traceId: failure.traceId,
         },
       }),
     };
@@ -441,7 +447,7 @@ describe('the errors of a Nova service', () => {
       expect(answer.status).toBe(503);
       expect(answer.body).toMatchObject({
         title: 'SERVICE_UNAVAILABLE',
-        detail: 'Internal server error',
+        detail: statusToErrorMessage(503),
       });
       expect(JSON.stringify(answer.body)).not.toContain('payments');
     });

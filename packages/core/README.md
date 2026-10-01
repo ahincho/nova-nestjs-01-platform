@@ -27,17 +27,18 @@ publicHoistPattern:
 
 Cada módulo tiene su carpeta en `src/` y su documento:
 
-| Módulo                                   | Qué resuelve                                               |
-| ---------------------------------------- | ---------------------------------------------------------- |
-| [`api-standard`](docs/api-standard.md)   | el sobre `{ success, status, data, errors }` y sus códigos |
-| [`api`](docs/api.md)                     | interceptor, filtro y `ValidationPipe` que lo aplican      |
-| [`errors`](docs/errors.md)               | errores por capa, sin Nest, y sus tres puertos (ADR-031)   |
-| [`auth`](docs/auth.md)                   | JWT opcional: guard global, `@Public()` y `@CurrentUser()` |
-| [`config`](docs/config.md)               | variables de entorno tipadas, upstreams y CORS             |
-| [`http`](docs/http.md)                   | cliente HTTP saliente con contexto y errores de upstream   |
-| [`observability`](docs/observability.md) | contexto de request, `x-request-id` y opciones de pino     |
-| [`health`](docs/health.md)               | sondas `live`, `ready` y heredada sobre terminus           |
-| [`openapi`](docs/openapi.md)             | documento OpenAPI, su interfaz y el sobre documentado      |
+| Módulo                                   | Qué resuelve                                                                    |
+| ---------------------------------------- | ------------------------------------------------------------------------------- |
+| [`api-standard`](docs/api-standard.md)   | el puerto del estándar de API y el sobre de Nova, su implementación por defecto |
+| [`api`](docs/api.md)                     | interceptor, filtro y validación que aplican las reglas del estándar            |
+| [`errors`](docs/errors.md)               | errores por capa, sin Nest, y sus tres puertos (ADR-031)                        |
+| [`auth`](docs/auth.md)                   | JWT opcional: guard global, `@Public()` y `@CurrentUser()`                      |
+| [`config`](docs/config.md)               | variables de entorno tipadas, upstreams, CORS y secretos                        |
+| [`http`](docs/http.md)                   | cliente HTTP saliente con contexto y errores de upstream                        |
+| [`observability`](docs/observability.md) | contexto de request, `x-request-id` y opciones de pino                          |
+| [`health`](docs/health.md)               | sondas `live`, `ready` y heredada sobre terminus                                |
+| [`openapi`](docs/openapi.md)             | documento OpenAPI, su interfaz y el cuerpo del estándar activo                  |
+| [`profile`](docs/profile.md)             | las convenciones de una organización, declaradas una vez                        |
 
 ## Un servicio completo
 
@@ -88,7 +89,7 @@ este módulo: `nestjs-http` declara que quiere cabeceras salientes de algún lad
 Las cuatro decisiones que se estaban tomando de nuevo en cada `main.ts`:
 
 - El `ValidationPipe` con `validationExceptionFactory`, para que un DTO fallido
-  vuelva como el sobre estándar con una entrada por restricción.
+  vuelva con una entrada por restricción, en la forma del estándar activo.
 - CORS con la política que declara una sola variable, o apagado si no se pasa.
 - Bind a `0.0.0.0`: atarse a localhost dentro de un contenedor deja al servicio
   inalcanzable desde el balanceador mientras se ve sano desde una shell local.
@@ -108,16 +109,26 @@ Y dos que llegaron con NestJS 12:
   Actúa sobre las conexiones **ya establecidas**, que es la distinción que
   importa al probarlo — está en [docs/health.md](docs/health.md#el-503-del-apagado-es-sobre-conexiones-ya-abiertas).
 
-| Opción                    | Por defecto                                         |
-| ------------------------- | --------------------------------------------------- |
-| `port`                    | la variable `PORT`, o 3000                          |
-| `host`                    | `0.0.0.0`                                           |
-| `cors`                    | apagado                                             |
-| `logger`                  | ninguno; los logs se bufferean hasta que se instala |
-| `globalPrefix`            | ninguno                                             |
-| `healthPath`              | `'health'`                                          |
-| `forbidUnknownProperties` | `true`                                              |
-| `routeConflicts`          | `{ duplicate: 'error', shadow: 'warn' }`            |
+| Opción                    | Por defecto                              |
+| ------------------------- | ---------------------------------------- |
+| `profile`                 | ninguno; el mismo de `NovaModule`        |
+| `port`                    | `PORT`, o las del perfil; si no 3000     |
+| `portVariables`           | `['PORT']`, o las del perfil             |
+| `host`                    | `0.0.0.0`                                |
+| `cors`                    | apagado                                  |
+| `secrets`                 | el del perfil; sin perfil, apagado       |
+| `logger`                  | el estructurado de la plataforma         |
+| `globalPrefix`            | el del perfil; sin perfil, ninguno       |
+| `healthPath`              | `'health'`                               |
+| `forbidUnknownProperties` | `true`                                   |
+| `routeConflicts`          | `{ duplicate: 'error', shadow: 'warn' }` |
+
+Los defaults son genéricos a propósito: `PORT` es la convención de Node, y el
+prefijo de los secretos no lo puede adivinar una plataforma que no conoce el
+entorno. **Las convenciones de una organización -de qué variable sale el puerto,
+cómo llegan sus secretos, bajo qué prefijo expone sus rutas- van en su perfil**,
+que se declara una vez y no en cada servicio. Está en
+[docs/profile.md](docs/profile.md).
 
 `forbidUnknownProperties` está encendido porque un campo ignorado en silencio es
 como un cliente termina creyendo que mandó un filtro que el servicio nunca aplicó.

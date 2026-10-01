@@ -1,24 +1,61 @@
 import type { CallHandler, ExecutionContext } from '@nestjs/common';
 import type { Reflector } from '@nestjs/core';
-import { ApiResponses } from '../../api-standard';
+import {
+  ApiResponses,
+  NovaEnvelopeStandard,
+  type ApiStandard,
+  type ApiWire,
+} from '../../api-standard';
 import { lastValueFrom, of } from 'rxjs';
 import { ResponseWrapperInterceptor } from './response-wrapper.interceptor';
 
 type ContextOptions = {
   statusCode?: number;
   type?: 'http' | 'rpc';
+  headers?: Record<string, string>;
 };
 
 function contextDouble({
   statusCode = 200,
   type = 'http',
+  headers = {},
 }: ContextOptions = {}): ExecutionContext {
+  const response = {
+    statusCode,
+    setHeader(name: string, value: string) {
+      headers[name] = value;
+    },
+  };
+
   return {
     getType: () => type,
     getHandler: () => () => undefined,
     getClass: () => class Controller {},
-    switchToHttp: () => ({ getResponse: () => ({ statusCode }) }),
+    switchToHttp: () => ({ getResponse: () => response }),
   } as unknown as ExecutionContext;
+}
+
+/**
+ * Un estándar que no envuelve: contesta el payload tal cual, en otro
+ * `Content-Type`, y reconoce como propio lo que trae una marca.
+ */
+class BareStandard implements ApiStandard {
+  readonly openapi = new NovaEnvelopeStandard().openapi;
+
+  success(payload: unknown, status: number): ApiWire {
+    return {
+      contentType: 'application/vnd.example+json',
+      body: { payload, status },
+    };
+  }
+
+  failure(): ApiWire {
+    return { body: null };
+  }
+
+  owns(payload: unknown): boolean {
+    return typeof payload === 'object' && payload !== null && 'own' in payload;
+  }
 }
 
 function handlerDouble(payload: unknown): CallHandler<unknown> {
@@ -96,5 +133,69 @@ describe('ResponseWrapperInterceptor', () => {
     );
 
     expect(result).toBe(payload);
+  });
+
+  describe('with another standard', () => {
+    it('answers with the body and the content type of the standard', async () => {
+      const headers: Record<string, string> = {};
+      const interceptor = new ResponseWrapperInterceptor(
+        reflectorDouble(),
+        new BareStandard(),
+      );
+
+      const result = await lastValueFrom(
+        interceptor.intercept(
+          contextDouble({ statusCode: 201, headers }),
+          handlerDouble({ id: 7 }),
+        ),
+      );
+
+      expect(result).toEqual({ payload: { id: 7 }, status: 201 });
+      expect(headers).toEqual({
+        'Content-Type': 'application/vnd.example+json',
+      });
+    });
+
+    // Qué cuenta como «ya formateado» lo sabe el estándar: el sobre de Nova
+    // armado a mano no es un cuerpo de este, y se trata como cualquier payload.
+    it('asks the standard whether a body is already its own', async () => {
+      const interceptor = new ResponseWrapperInterceptor(
+        reflectorDouble(),
+        new BareStandard(),
+      );
+      const own = { own: true };
+
+      const kept = await lastValueFrom(
+        interceptor.intercept(contextDouble(), handlerDouble(own)),
+      );
+      const envelope = ApiResponses.ok({ id: 7 });
+      const wrapped = await lastValueFrom(
+        interceptor.intercept(contextDouble(), handlerDouble(envelope)),
+      );
+
+      expect(kept).toBe(own);
+      expect(wrapped).toEqual({ payload: envelope, status: 200 });
+    });
+
+    // Las dos reglas que no son del estándar siguen valiendo con cualquiera.
+    it('still leaves out a skipped handler and a non-HTTP context', async () => {
+      const payload = { status: 'ok' };
+
+      const skipped = await lastValueFrom(
+        new ResponseWrapperInterceptor(
+          reflectorDouble(true),
+          new BareStandard(),
+        ).intercept(contextDouble(), handlerDouble(payload)),
+      );
+      const rpc = await lastValueFrom(
+        new ResponseWrapperInterceptor(
+          reflectorDouble(),
+          new BareStandard(),
+        ).intercept(contextDouble({ type: 'rpc' }), handlerDouble(payload)),
+      );
+
+      expect(skipped).toBe(payload);
+      expect(rpc).toBe(payload);
+    });
   });
 });

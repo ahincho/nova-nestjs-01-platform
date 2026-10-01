@@ -1,23 +1,29 @@
-import { ApplicationError } from './application-error';
-import { DomainError } from './domain-error';
-import { InfrastructureError } from './infrastructure-error';
+import type { ApiFailure } from '../api-standard/api-standard';
+import { Layer } from './layer';
 import { NovaErrorSerializer } from './nova-error-serializer';
+
+/** El fallo ya saneado y descrito, como se lo pasa el filtro global. */
+function failure(overrides: Partial<ApiFailure> = {}): ApiFailure {
+  return {
+    status: 404,
+    kind: 'request',
+    layer: Layer.DOMAIN,
+    traceId: 'trace-1',
+    retryAfter: undefined,
+    errors: [
+      { code: 'ORDER_NOT_FOUND', message: 'Pedido no encontrado', field: null },
+    ],
+    ...overrides,
+  };
+}
 
 describe('NovaErrorSerializer', () => {
   const serializer = new NovaErrorSerializer();
 
   it('answers with the Nova envelope and the traceId in metadata', () => {
-    const { body, headers } = serializer.serialize(
-      DomainError.notFound('Pedido no encontrado'),
-      {
-        status: 404,
-        code: 'ORDER_NOT_FOUND',
-        message: 'Pedido no encontrado',
-        traceId: 'trace-1',
-      },
-    );
+    const wire = serializer.serialize(failure());
 
-    expect(body).toEqual({
+    expect(wire.body).toEqual({
       success: false,
       status: 404,
       data: null,
@@ -30,56 +36,35 @@ describe('NovaErrorSerializer', () => {
       ],
       metadata: { traceId: 'trace-1' },
     });
-    expect(headers).toEqual({});
+    expect(wire.headers).toBeUndefined();
   });
 
   // La clave está siempre, para que quien la lee no tenga que preguntar si existe.
   it('writes a null traceId when there is none', () => {
-    const { body } = serializer.serialize(DomainError.notFound('x'), {
-      status: 404,
-      code: 'NOT_FOUND',
-      message: 'x',
-    });
-
-    expect(body).toMatchObject({ metadata: { traceId: null } });
+    expect(
+      serializer.serialize(failure({ traceId: undefined })).body,
+    ).toMatchObject({ metadata: { traceId: null } });
   });
 
-  it('writes Retry-After in seconds', () => {
-    const { headers } = serializer.serialize(
-      ApplicationError.rateLimited('Demasiadas solicitudes', {
-        retryAfter: 30,
-      }),
-      { status: 429, code: 'TOO_MANY_REQUESTS', message: 'x' },
-    );
-
-    expect(headers).toEqual({ 'Retry-After': '30' });
+  it('writes Retry-After in seconds, on a 4xx and on a 5xx', () => {
+    expect(
+      serializer.serialize(failure({ status: 429, retryAfter: 30 })).headers,
+    ).toEqual({ 'Retry-After': '30' });
+    expect(
+      serializer.serialize(
+        failure({ status: 503, layer: Layer.INFRASTRUCTURE, retryAfter: 10 }),
+      ).headers,
+    ).toEqual({ 'Retry-After': '10' });
   });
 
-  it('writes Retry-After on a 5xx too, for an unavailable upstream', () => {
-    const { headers } = serializer.serialize(
-      InfrastructureError.unavailable('payments', { retryAfter: 10 }),
-      { status: 503, code: 'SERVICE_UNAVAILABLE', message: 'x' },
-    );
-
-    expect(headers).toEqual({ 'Retry-After': '10' });
-  });
-
-  describe('field errors', () => {
-    const invalid = ApplicationError.invalidInput('La entrada no es válida', [
-      { field: 'periodId', message: 'Debe ser un entero' },
-      { field: 'email', code: 'EMAIL_TAKEN', message: 'Ya está registrado' },
-    ]);
-
-    // Una entrada por campo, con su nombre: es lo que deja al formulario marcar
-    // el input exacto. Sin código propio, el campo lleva el del error.
-    it('answers one entry per field', () => {
-      const { body } = serializer.serialize(invalid, {
+  // Una entrada por campo, con su nombre: es lo que deja al formulario marcar el
+  // input exacto. El filtro ya las armó; el serializador no agrega ni quita.
+  it('answers one entry per field, in order', () => {
+    const { body } = serializer.serialize(
+      failure({
         status: 400,
-        code: 'BAD_REQUEST',
-        message: 'La entrada no es válida',
-      });
-
-      expect(body).toMatchObject({
+        kind: 'validation',
+        layer: Layer.APPLICATION,
         errors: [
           {
             code: 'BAD_REQUEST',
@@ -92,27 +77,32 @@ describe('NovaErrorSerializer', () => {
             field: 'email',
           },
         ],
-      });
-    });
+      }),
+    );
 
-    // Aunque un mapper propio lleve un error de entrada a un 5xx, el cuerpo de
-    // un 5xx no cuenta nada más que su código genérico.
-    it('never lists them in a 5xx', () => {
-      const { body } = serializer.serialize(invalid, {
-        status: 500,
-        code: 'INTERNAL_SERVER_ERROR',
-        message: 'Internal server error',
-      });
-
-      expect(body).toMatchObject({
-        errors: [
-          {
-            code: 'INTERNAL_SERVER_ERROR',
-            message: 'Internal server error',
-            field: null,
-          },
-        ],
-      });
+    expect(body).toMatchObject({
+      errors: [
+        {
+          code: 'BAD_REQUEST',
+          message: 'Debe ser un entero',
+          field: 'periodId',
+        },
+        { code: 'EMAIL_TAKEN', message: 'Ya está registrado', field: 'email' },
+      ],
     });
+  });
+
+  // El filtro siempre trae el código; sin él, alguien llamó al serializador a mano.
+  it('falls back to the code of the Nova catalog', () => {
+    const { body } = serializer.serialize(
+      failure({
+        status: 503,
+        kind: 'internal',
+        layer: Layer.INFRASTRUCTURE,
+        errors: [{ code: undefined, message: 'x', field: null }],
+      }),
+    );
+
+    expect(body).toMatchObject({ errors: [{ code: 'SERVICE_UNAVAILABLE' }] });
   });
 });

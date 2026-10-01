@@ -1,6 +1,22 @@
 import type { INestApplication } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
-import { ApiEnvelopeSchema, ApiErrorItemSchema } from './envelope';
+import { API_STANDARD } from '../api';
+import { NovaEnvelopeStandard, type ApiStandard } from '../api-standard';
+import { applyApiStandard } from './api-standard-document';
+
+/**
+ * El estándar con el que contesta la aplicación.
+ *
+ * Sin `ApiStandardModule` no hay ninguno registrado, y se documenta el sobre de
+ * Nova, que es lo que este módulo documentó siempre.
+ */
+function activeStandard(app: INestApplication): ApiStandard {
+  try {
+    return app.get<ApiStandard>(API_STANDARD, { strict: false });
+  } catch {
+    return new NovaEnvelopeStandard();
+  }
+}
 
 /** Un servidor donde esta API responde, tal como se lista en el documento. */
 export type OpenApiServer = {
@@ -96,12 +112,17 @@ export function setupOpenApi(
     builder.addTag(tag.name, tag.description);
   }
 
-  const document = SwaggerModule.createDocument(app, builder.build(), {
-    // Las dos clases del sobre no las alcanza ningún controlador -nadie las
-    // devuelve ni las recibe-, así que sin declararlas acá el documento queda
-    // con referencias a esquemas que no existen.
-    extraModels: [ApiEnvelopeSchema, ApiErrorItemSchema],
-  });
+  // Los esquemas del cuerpo los pone el estándar activo, no los decoradores:
+  // los decoradores corren antes de que exista la inyección y sólo pueden
+  // escribir el sobre de Nova. Acá sí se sabe cuál está activo.
+  //
+  // Eso incluye los componentes que ningún controlador alcanza -nadie devuelve
+  // ni recibe el sobre como tipo-, que sin esto dejarían el documento con
+  // referencias a esquemas que no existen.
+  const document = applyApiStandard(
+    SwaggerModule.createDocument(app, builder.build()),
+    activeStandard(app),
+  );
 
   // El requisito va en la raíz y no operación por operación porque el guard de
   // `NovaAuthModule` también es global. Declararlo con un decorador en cada

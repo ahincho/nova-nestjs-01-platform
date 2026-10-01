@@ -114,4 +114,43 @@ describe('RequestContextService', () => {
       expect(service.headers()).toEqual({});
     });
   });
+
+  describe('remove', () => {
+    it('drops a header from the request in flight', () => {
+      service.run(context, () => {
+        service.remove(['x-user-id']);
+
+        expect(service.headers()).toEqual({ 'x-request-id': 'req-1' });
+      });
+    });
+
+    it('matches the name whatever its case', () => {
+      service.run(context, () => {
+        service.remove(['X-User-Id']);
+
+        expect(service.headers()).not.toHaveProperty('x-user-id');
+      });
+    });
+
+    it('survives an await', async () => {
+      await service.run(context, async () => {
+        service.remove(['x-user-id']);
+        await Promise.resolve();
+
+        expect(service.headers()).toEqual({ 'x-request-id': 'req-1' });
+      });
+    });
+
+    it('leaves the context it was given untouched', () => {
+      service.run(context, () => {
+        service.remove(['x-user-id']);
+      });
+
+      expect(context.headers).toHaveProperty('x-user-id', 'u-9');
+    });
+
+    it('does nothing outside a request', () => {
+      expect(() => service.remove(['x-user-id'])).not.toThrow();
+    });
+  });
 });

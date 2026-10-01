@@ -65,6 +65,28 @@ export class RequestContextService {
   }
 
   /**
+   * Quita cabeceras del contexto de la petición en vuelo, sin distinguir
+   * mayúsculas.
+   *
+   * Es la contracara de `enrich`: la usa la autenticación para borrar la
+   * identidad que el contexto copió de la petición, que sólo ella puede
+   * escribir (ADR-037). Fuera de una petición no hace nada.
+   */
+  remove(names: readonly string[]): void {
+    const current = this.storage.getStore();
+    if (!current) {
+      return;
+    }
+    const unwanted = new Set(names.map((name) => name.toLowerCase()));
+    // Sobre el objeto guardado, por lo mismo que `enrich`.
+    for (const name of Object.keys(current.headers)) {
+      if (unwanted.has(name.toLowerCase())) {
+        delete current.headers[name];
+      }
+    }
+  }
+
+  /**
    * The headers every outbound call should carry.
    *
    * Empty outside a request, so a background job calls upstreams without

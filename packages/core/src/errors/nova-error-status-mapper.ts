@@ -5,8 +5,7 @@ import {
   PlatformErrorType,
 } from './error-type';
 import { Layer } from './layer';
-import type { NovaError } from './nova-error';
-import type { ErrorStatusMapper } from './ports';
+import type { ErrorClassification, ErrorStatusMapper } from './ports';
 
 // La tabla de ADR-031, fila por fila. `domain` y `application` son 4xx porque
 // son esperados; `infrastructure` y `platform` son 5xx porque son incidentes.
@@ -43,7 +42,7 @@ const STATUS_BY_LAYER: {
  * éste para el resto.
  */
 export class NovaErrorStatusMapper implements ErrorStatusMapper {
-  statusOf(error: NovaError): number {
+  statusOf(error: ErrorClassification): number {
     // Un tipo fuera de la tabla sólo puede venir de código sin tipos. Sale como
     // 500 porque es un defecto, y un 500 es lo único que no promete nada.
     return STATUS_BY_LAYER[error.layer][error.type] ?? 500;

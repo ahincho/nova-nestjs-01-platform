@@ -6,8 +6,11 @@ import type { Layer } from './layer';
  * Un campo de la entrada que no pasó, en un `INVALID_INPUT`.
  */
 export type FieldError = {
-  /** El campo, con ruta punteada si está anidado: `address.zipCode`. */
-  readonly field: string;
+  /**
+   * El campo, con ruta punteada si está anidado: `address.zipCode`. `null` para
+   * una restricción que no es de un campo en particular.
+   */
+  readonly field: string | null;
   /** Qué tiene de malo, para la persona. */
   readonly message: string;
   /**
@@ -18,13 +21,17 @@ export type FieldError = {
 };
 
 /**
- * Lo que los puertos leen de un error: su clasificación y lo que se puede
- * mostrar de él.
+ * El error completo, tal como lo lee el núcleo: su clasificación, lo que se
+ * puede mostrar de él y lo que va sólo al log.
  *
- * Un {@link NovaError} lo cumple entero. Es un tipo aparte porque también pasan
- * por los puertos las excepciones propias del framework, que ADR-031 lee según
- * su status y que no siempre tienen un tipo de Nova: un 405 es de `application`
- * y ninguna fila de la tabla lo nombra.
+ * Un {@link NovaError} lo cumple entero. Es un tipo aparte porque también lo
+ * cumplen las excepciones propias del framework, que ADR-031 lee según su
+ * status y que no siempre tienen un tipo de Nova: un 405 es de `application` y
+ * ninguna fila de la tabla lo nombra.
+ *
+ * **Ningún puerto lo recibe.** El proveedor y la causa van al log, y lo demás
+ * llega a los puertos como un `SanitizedError`, ya sin lo que un 5xx no puede
+ * decir.
  */
 export interface LayeredError {
   readonly layer: Layer;
@@ -40,7 +47,7 @@ export interface LayeredError {
   readonly code?: string;
   /**
    * El texto para la persona. Con el catálogo de Nova llega al cliente sólo en
-   * un 4xx.
+   * un 4xx; en un 5xx va al log.
    */
   readonly message: string;
   /** Nunca ausente: vacío cuando el error no es de un campo. */

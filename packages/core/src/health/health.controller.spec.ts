@@ -192,8 +192,11 @@ describe('the health controller', () => {
       expect(result.error).toMatchObject({
         queue: { status: 'down', message: 'connection refused' },
       });
+      // El motivo va como campo: en el mensaje, cada motivo era un mensaje
+      // distinto y no había cómo contar las caídas de un chequeo.
       expect(Logger.prototype.warn).toHaveBeenCalledWith(
-        'Readiness check "queue" failed: connection refused',
+        { readiness: { check: 'queue', message: 'connection refused' } },
+        'Readiness check failed',
       );
     });
 

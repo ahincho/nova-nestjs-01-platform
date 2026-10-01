@@ -6,7 +6,9 @@ import {
 import { ValidationException } from './validation.exception';
 
 describe('validationExceptionFactory', () => {
-  it('reports one entry per constraint, each naming its field', () => {
+  // Sin código: cómo se nombra un fallo de validación lo decide el catálogo
+  // del estándar activo, así que la fábrica sólo dice qué campo y por qué.
+  it('reports one violation per constraint, each naming its field', () => {
     const errors: ValidationErrorLike[] = [
       { property: 'periodId', constraints: { isInt: 'must be an integer' } },
       {
@@ -18,17 +20,9 @@ describe('validationExceptionFactory', () => {
     const exception = validationExceptionFactory(errors);
 
     expect(exception).toBeInstanceOf(ValidationException);
-    expect(exception.validationErrors).toEqual([
-      {
-        code: VALIDATION_ERROR_CODE,
-        message: 'must be an integer',
-        field: 'periodId',
-      },
-      {
-        code: VALIDATION_ERROR_CODE,
-        message: 'must not be empty',
-        field: 'studentId',
-      },
+    expect(exception.violations).toEqual([
+      { field: 'periodId', message: 'must be an integer' },
+      { field: 'studentId', message: 'must not be empty' },
     ]);
   });
 
@@ -43,7 +37,7 @@ describe('validationExceptionFactory', () => {
       },
     ];
 
-    expect(validationExceptionFactory(errors).validationErrors).toHaveLength(2);
+    expect(validationExceptionFactory(errors).violations).toHaveLength(2);
   });
 
   // Without the dotted path the client is told "address is invalid" and has no
@@ -61,12 +55,8 @@ describe('validationExceptionFactory', () => {
       },
     ];
 
-    expect(validationExceptionFactory(errors).validationErrors).toEqual([
-      {
-        code: VALIDATION_ERROR_CODE,
-        message: 'invalid code',
-        field: 'address.zipCode',
-      },
+    expect(validationExceptionFactory(errors).violations).toEqual([
+      { field: 'address.zipCode', message: 'invalid code' },
     ]);
   });
 
@@ -88,12 +78,32 @@ describe('validationExceptionFactory', () => {
       },
     ];
 
-    expect(validationExceptionFactory(errors).validationErrors[0]?.field).toBe(
+    expect(validationExceptionFactory(errors).violations[0]?.field).toBe(
       'student.address.city',
     );
   });
 
   it('produces an empty list when nothing carries a constraint', () => {
-    expect(validationExceptionFactory([]).validationErrors).toEqual([]);
+    expect(validationExceptionFactory([]).violations).toEqual([]);
+  });
+});
+
+describe('ValidationException', () => {
+  // `validationErrors` queda por compatibilidad con quien lo leía, y sigue
+  // diciendo lo mismo que antes: el sobre de Nova, con su código.
+  it('still reads as the Nova envelope entries through the old name', () => {
+    const exception = new ValidationException([
+      { field: 'periodId', message: 'must be an integer' },
+      { field: 'name', message: 'is taken', code: 'NAME_TAKEN' },
+    ]);
+
+    expect(exception.validationErrors).toEqual([
+      {
+        code: VALIDATION_ERROR_CODE,
+        message: 'must be an integer',
+        field: 'periodId',
+      },
+      { code: 'NAME_TAKEN', message: 'is taken', field: 'name' },
+    ]);
   });
 });
