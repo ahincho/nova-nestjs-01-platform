@@ -35,11 +35,10 @@
     "test:cov": "nova test:cov",
     "typecheck": "nova typecheck"
   },
-  "peerDependencies": {
+  "dependencies": {
     "@ahincho/nova-nestjs": "workspace:^"
   },
   "devDependencies": {
-    "@ahincho/nova-nestjs": "workspace:*",
     "@ahincho/nova-nestjs-toolchain": "workspace:*",
     "@types/node": "catalog:",
     "rimraf": "catalog:",
