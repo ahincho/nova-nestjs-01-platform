@@ -1,6 +1,6 @@
 {
   "name": "@ahincho/nova-nestjs-secrets-aws-secrets-manager",
-  "version": "0.16.0",
+  "version": "0.16.1",
   "description": "AWS Secrets Manager as a secret store for the Nova Platform NestJS meta-framework: the service imports aws-secrets-manager:<name or ARN> and reads the keys as environment variables",
   "license": "EPL-2.0",
   "repository": {
