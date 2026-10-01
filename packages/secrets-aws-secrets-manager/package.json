@@ -36,13 +36,10 @@
     "typecheck": "nova typecheck"
   },
   "dependencies": {
+    "@ahincho/nova-nestjs": "workspace:^",
     "@aws-sdk/client-secrets-manager": "^3.1143.0"
   },
-  "peerDependencies": {
-    "@ahincho/nova-nestjs": "workspace:^"
-  },
   "devDependencies": {
-    "@ahincho/nova-nestjs": "workspace:*",
     "@ahincho/nova-nestjs-toolchain": "workspace:*",
     "@types/node": "catalog:",
     "rimraf": "catalog:",

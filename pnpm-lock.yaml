@@ -115,13 +115,13 @@ importers:
 
   packages/secrets-aws-secrets-manager:
     dependencies:
+      '@ahincho/nova-nestjs':
+        specifier: workspace:^
+        version: link:../core
       '@aws-sdk/client-secrets-manager':
         specifier: ^3.1143.0
         version: 3.1143.0
     devDependencies:
-      '@ahincho/nova-nestjs':
-        specifier: workspace:*
-        version: link:../core
       '@ahincho/nova-nestjs-toolchain':
         specifier: workspace:*
         version: link:../toolchain
@@ -139,10 +139,11 @@ importers:
         version: 5.0.0(@types/node@24.13.3)(@vitest/coverage-v8@5.0.0)(vite@8.2.2(@types/node@24.13.3)(terser@5.51.2)(yaml@2.9.1))
 
   packages/secrets-vault:
-    devDependencies:
+    dependencies:
       '@ahincho/nova-nestjs':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../core
+    devDependencies:
       '@ahincho/nova-nestjs-toolchain':
         specifier: workspace:*
         version: link:../toolchain
