@@ -30,7 +30,26 @@ type AppDouble = {
 };
 
 const PORT_VARIABLES = ['APP_PORT', 'PORT', 'HTTP_PORT'];
-const SECRET_VARIABLES = ['CREDENTIALS_DB', 'NOVA_SECRETS', 'DB_HOST'];
+const SECRET_VARIABLES = [
+  'CREDENTIALS_DB',
+  'NOVA_SECRETS',
+  'NOVA_SECRETS_IMPORT',
+  'DB_HOST',
+  'DB_PASSWORD',
+];
+
+/** Un almacén en memoria, como lo pasaría una prueba en `sources`. */
+const MEMORY_STORE = {
+  name: 'memory',
+  create: () => ({
+    find: (reference: string) =>
+      Promise.resolve(
+        reference === 'ms-course'
+          ? { reference, entries: { DB_PASSWORD: 'from-the-store' } }
+          : undefined,
+      ),
+  }),
+};
 
 function clearEnvironment(): void {
   for (const name of [...PORT_VARIABLES, ...SECRET_VARIABLES]) {
@@ -320,6 +339,38 @@ describe('bootstrap', () => {
       process.env['NOVA_SECRETS'] = 'CREDENTIALS_DB';
       await bootstrap(AppModule, { secrets: true });
       expect(process.env['DB_HOST']).toBe('academic');
+    });
+
+    it('reads a store before the application exists', async () => {
+      let passwordWhenCreated: string | undefined;
+      vi.mocked(NestFactory.create).mockImplementation(() => {
+        passwordWhenCreated = process.env['DB_PASSWORD'];
+        return Promise.resolve(app as unknown as INestApplication);
+      });
+
+      await bootstrap(AppModule, {
+        secrets: { imports: ['memory:ms-course'], sources: [MEMORY_STORE] },
+      });
+
+      expect(passwordWhenCreated).toBe('from-the-store');
+    });
+
+    // Un pedido es explícito: quien opera el servicio lo puso en la task
+    // definition, así que se lee aunque el servicio no declare nada.
+    it('reads NOVA_SECRETS_IMPORT even when the service declares nothing', async () => {
+      process.env['NOVA_SECRETS_IMPORT'] = 'key-vault:ms-course';
+
+      await expect(bootstrap(AppModule)).rejects.toThrow(
+        'needs the package @ahincho/nova-nestjs-secrets-key-vault',
+      );
+    });
+
+    it('lets the service turn the stores off too', async () => {
+      process.env['NOVA_SECRETS_IMPORT'] = 'vault:ms-course';
+
+      await bootstrap(AppModule, { secrets: false });
+
+      expect(process.env['DB_PASSWORD']).toBeUndefined();
     });
 
     describe('with a profile', () => {

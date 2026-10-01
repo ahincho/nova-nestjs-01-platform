@@ -11,11 +11,12 @@ import { validationExceptionFactory } from './api';
 import { DEFAULT_HEALTH_PATH } from './health';
 import {
   buildCorsOptions,
+  importSecrets,
   numberEnv,
   unfoldSecrets,
   type CorsPolicyOptions,
   type CorsRequestIdHeaders,
-  type UnfoldSecretsOptions,
+  type SecretsOptions,
 } from './config';
 import {
   OBSERVABILITY_OPTIONS,
@@ -70,8 +71,13 @@ export type BootstrapOptions = {
    * plataforma no conoce puede toparse con una variable que se llama así y no
    * es un secreto JSON, y eso cortaría un arranque que hoy funciona. Quien
    * conoce ese entorno es la organización, y por eso el prefijo es de su perfil.
+   *
+   * Los almacenes se piden con `imports`, como `['vault:plaza-bff']`, o desde
+   * la task definition con `NOVA_SECRETS_IMPORT`, igual que en Spring Boot y en
+   * Quarkus (ADR-049). Esos pedidos sí se leen sin declarar nada, porque son
+   * explícitos: solo `secrets: false` los apaga.
    */
-  readonly secrets?: UnfoldSecretsOptions | boolean;
+  readonly secrets?: SecretsOptions | boolean;
 
   /**
    * Defaults to `0.0.0.0`. Binding to localhost inside a container makes the
@@ -155,9 +161,9 @@ const DEFAULT_ROUTE_CONFLICTS: RouteConflictPolicy = {
  * del perfil, que puede ser no desdoblar.
  */
 function secretsOptions(
-  profile: UnfoldSecretsOptions | undefined,
-  service: UnfoldSecretsOptions | boolean | undefined,
-): UnfoldSecretsOptions | undefined {
+  profile: SecretsOptions | undefined,
+  service: SecretsOptions | boolean | undefined,
+): SecretsOptions | undefined {
   if (service === false) {
     return undefined;
   }
@@ -282,7 +288,16 @@ export async function bootstrap(
   // variables cuando se instancia su módulo, así que para entonces las claves
   // del secreto ya tienen que estar en el entorno.
   const secrets = secretsOptions(profile?.bootstrap?.secrets, options.secrets);
+  // Lo que ya estaba en el entorno antes de desdoblar nada: con `override` en
+  // false, un secreto pedido no pisa esas variables, pero sí lo desdoblado.
+  const original = new Set(Object.keys(secrets?.env ?? process.env));
   const unfolded = secrets === undefined ? [] : unfoldSecrets(secrets);
+  // Los pedidos a un almacén se leen aunque el servicio no declare nada, porque
+  // son explícitos: NOVA_SECRETS_IMPORT la pone quien opera el servicio.
+  const imported =
+    options.secrets === false
+      ? []
+      : await importSecrets(secrets ?? {}, original);
 
   const app = await NestFactory.create(
     rootModule as Parameters<typeof NestFactory.create>[0],
@@ -327,6 +342,9 @@ export async function bootstrap(
   // una credencial no aparece.
   if (unfolded.length > 0) {
     new Logger('Secrets').log(`Unfolded ${unfolded.join(', ')}`);
+  }
+  if (imported.length > 0) {
+    new Logger('Secrets').log(`Imported ${imported.join(', ')}`);
   }
 
   app.useGlobalPipes(

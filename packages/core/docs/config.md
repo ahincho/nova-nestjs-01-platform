@@ -214,3 +214,73 @@ el fallo más caro de diagnosticar de esta familia.
 El mensaje del error **nombra la variable y nunca su contenido**. Por eso se
 descarta el error de `JSON.parse`: cita el texto que no pudo leer, y ese texto es
 el secreto.
+
+## Los secretos de un almacén
+
+Un servicio también puede leer sus secretos de un almacén al arrancar: Vault o
+AWS Secrets Manager. Cada almacén es un paquete aparte, así que un servicio que
+usa Vault no instala el SDK de AWS
+([ADR-049](https://github.com/ahincho/nova-shared-01-docs/blob/main/adrs/shared/ADR-049-secretos-en-quarkus-y-nestjs.md)):
+
+| Fuente                | Paquete                                            |
+| --------------------- | -------------------------------------------------- |
+| `vault`               | `@ahincho/nova-nestjs-secrets-vault`               |
+| `aws-secrets-manager` | `@ahincho/nova-nestjs-secrets-aws-secrets-manager` |
+
+```ts
+void bootstrap(AppModule, { secrets: { imports: ['vault:plaza-bff'] } });
+```
+
+O desde la task definition, sin tocar el código:
+
+```bash
+NOVA_SECRETS_IMPORT=vault:plaza-bff,optional:aws-secrets-manager:prod/plaza-bff/db
+```
+
+**Es la misma forma que en Spring Boot y en Quarkus**: `<fuente>:<referencia>`,
+con `optional:` delante si puede faltar, y la misma variable. Quien opera un
+servicio pide un almacén igual sin saber en qué framework está escrito.
+
+- **El servicio no registra el almacén.** `vault:` hace que la plataforma cargue
+  `@ahincho/nova-nestjs-secrets-vault` desde las dependencias del servicio, así
+  que cambiar de almacén es cambiar una dependencia y una línea. Si el paquete
+  no está instalado, el arranque corta diciendo cuál instalar.
+- **Un pedido se lee aunque el servicio no declare nada**, porque es explícito:
+  solo `secrets: false` lo apaga.
+- **Un secreto que falta corta el arranque**, salvo que se pida con `optional:`.
+  Quien escribió la referencia prometió que existe.
+- **Un pedido gana sobre lo que se desdobla del entorno**, y entre dos pedidos
+  gana el último. Con `override: false`, ninguno pisa una variable que ya estaba
+  en el entorno.
+- **Cada llamada lleva un timeout** de 5 segundos, sin reintentos, como el
+  cliente HTTP.
+
+La configuración de cada almacén lleva los mismos nombres que en Java, escritos
+como variables de entorno:
+
+| Variable                                             | Por defecto                      |
+| ---------------------------------------------------- | -------------------------------- |
+| `NOVA_SECRETS_VAULT_ADDRESS`                         | `VAULT_ADDR`                     |
+| `NOVA_SECRETS_VAULT_TOKEN`                           | `VAULT_TOKEN`                    |
+| `NOVA_SECRETS_VAULT_APP_ROLE_ROLE_ID` y `_SECRET_ID` | AppRole; gana sobre el token     |
+| `NOVA_SECRETS_VAULT_APP_ROLE_MOUNT`                  | `approle`                        |
+| `NOVA_SECRETS_VAULT_MOUNT`                           | `secret`, el motor KV versión 2  |
+| `NOVA_SECRETS_VAULT_TIMEOUT`                         | `5s`                             |
+| `NOVA_SECRETS_AWS_SECRETS_MANAGER_REGION`            | `AWS_REGION` y la cadena del SDK |
+| `NOVA_SECRETS_AWS_SECRETS_MANAGER_ENDPOINT`          | solo para un emulador            |
+| `NOVA_SECRETS_AWS_SECRETS_MANAGER_TIMEOUT`           | `5s`                             |
+
+Un valor también se puede pasar en código con `secrets: { settings: { ... } }`,
+con la clave de Java, como `'nova.secrets.vault.mount'`. Las credenciales de AWS
+salen de la cadena del SDK: dentro de ECS, del rol de la tarea.
+
+**Un secreto de AWS es un JSON**, y el almacén lo abre con las mismas reglas que
+el desdoblado del entorno. Por eso un servicio puede pasar de recibirlo en
+`CREDENTIALS_DB`, inyectado por ECS, a pedirlo con `aws-secrets-manager:`, y obtiene
+exactamente las mismas variables.
+
+Para escribir otro almacén alcanza con un paquete que se llame
+`@ahincho/nova-nestjs-secrets-<fuente>` y exporte un `secretSourceProvider` con
+ese nombre. Los tipos (`SecretSourceProvider`, `SecretSource`) y las piezas que
+aplican las reglas (`secretFromJson`, `durationSetting`, `SecretSourceError`)
+salen de `@ahincho/nova-nestjs`.

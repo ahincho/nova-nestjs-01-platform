@@ -6,7 +6,9 @@
     [
       "@ahincho/nova-nestjs",
       "@ahincho/nova-nestjs-toolchain",
-      "@ahincho/nova-nestjs-schematics"
+      "@ahincho/nova-nestjs-schematics",
+      "@ahincho/nova-nestjs-secrets-vault",
+      "@ahincho/nova-nestjs-secrets-aws-secrets-manager"
     ]
   ],
   "linked": [],
