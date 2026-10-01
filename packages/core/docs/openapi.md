@@ -77,9 +77,34 @@ findAll(): Promise<CourseResponse[]> {
 ```
 
 `ApiErrors` documenta los fallos con el mismo sobre, y **el código de cada uno
-sale de `statusToErrorCode`**, que es la misma función que usa el filtro de
-excepciones en tiempo de ejecución. Escribirlo a mano dejaría que el documento y
-el servicio se contradijeran sin que nada avise.
+sale del catálogo del estándar**, el mismo que usa el filtro de excepciones en
+tiempo de ejecución. Escribirlo a mano dejaría que el documento y el servicio se
+contradijeran sin que nada avise. Un servicio que reemplaza el catálogo con
+`errors.catalog` contesta sus propios códigos, y en ese caso es el servicio quien
+tiene que declararlos en el documento.
+
+Con el sobre de Nova, cada fallo documentado declara además `metadata.traceId`
+como requerido (ADR-031): es el id que se cita al reportar la falla. En el sobre
+base es opcional, porque un éxito no lo trae.
+
+### Con otro estándar
+
+Los decoradores se llaman igual y se escriben igual, pero **documentan el
+estándar activo**, no el sobre de Nova. Con uno que contesta los errores en
+RFC 7807, el 404 de arriba sale descrito como `application/problem+json` y con el
+esquema que ese estándar declara; el sobre de Nova ni siquiera aparece en el
+documento, porque ningún endpoint lo devuelve.
+
+Eso no lo pueden resolver los decoradores solos. Corren cuando se importa la
+clase, **antes de que exista el contenedor de inyección**, así que no saben qué
+estándar se va a registrar. Escriben el sobre de Nova y dejan una marca con lo que
+quisieron documentar -qué DTO, qué status-, y `setupOpenApi` la resuelve contra el
+estándar activo al armar el documento.
+
+La consecuencia práctica: **un documento armado sin `setupOpenApi` describe el
+sobre de Nova**, sea cual sea el estándar. Con el sobre de Nova da igual; con otro,
+el documento sólo es correcto si pasa por `setupOpenApi`, que es lo que hacen
+`bootstrap()` y la prueba que emite el generador.
 
 ## El token
 

@@ -1,7 +1,19 @@
+import {
+  API_STANDARD_OPTIONS,
+  ApiStandardModule,
+  ERROR_PORTS,
+  type ResolvedApiStandardOptions,
+} from './api';
 import { NovaAuthModule } from './auth';
+import {
+  NovaErrorStatusMapper,
+  type ErrorCatalog,
+  type ErrorPorts,
+} from './errors';
 import { OUTBOUND_HEADERS_PROVIDER } from './http';
 import { RequestContextService } from './observability';
 import { NovaModule } from './nova.module';
+import { NOVA_PROFILE } from './profile';
 
 type ExistingProvider = { provide: unknown; useExisting?: unknown };
 
@@ -47,15 +59,80 @@ describe('NovaModule.forRoot', () => {
     ).toBe(true);
   });
 
-  // Only the binding this module owns: the sub-modules are global, so what
-  // they export is already visible everywhere.
-  it('exports the headers port', () => {
-    expect(NovaModule.forRoot().exports).toEqual([OUTBOUND_HEADERS_PROVIDER]);
+  // Only the bindings this module owns: the sub-modules are global, so what
+  // they export is already visible everywhere. El perfil se exporta porque lo
+  // lee `bootstrap()`.
+  it('exports the headers port and the profile', () => {
+    expect(NovaModule.forRoot().exports).toEqual([
+      OUTBOUND_HEADERS_PROVIDER,
+      NOVA_PROFILE,
+    ]);
   });
 
   // Global, so a feature module injects the client or the context without
   // importing the platform again in every one of them.
   it('is global', () => {
     expect(NovaModule.forRoot().global).toBe(true);
+  });
+});
+
+describe('the errors option of NovaModule.forRoot', () => {
+  type ImportedModule = {
+    module?: unknown;
+    providers?: { provide: unknown; useValue?: unknown }[];
+  };
+
+  function portsOf(module: ReturnType<typeof NovaModule.forRoot>): ErrorPorts {
+    const apiStandard = (module.imports as ImportedModule[]).find(
+      (imported) => imported.module === ApiStandardModule,
+    );
+
+    return apiStandard?.providers?.find(
+      (provider) => provider.provide === ERROR_PORTS,
+    )?.useValue as ErrorPorts;
+  }
+
+  function optionsOf(
+    module: ReturnType<typeof NovaModule.forRoot>,
+  ): ResolvedApiStandardOptions | undefined {
+    const apiStandard = (module.imports as ImportedModule[]).find(
+      (imported) => imported.module === ApiStandardModule,
+    );
+
+    return apiStandard?.providers?.find(
+      (provider) => provider.provide === API_STANDARD_OPTIONS,
+    )?.useValue as ResolvedApiStandardOptions | undefined;
+  }
+
+  const catalog: ErrorCatalog = {
+    describe: () => ({ code: 'OWN', message: 'own' }),
+  };
+
+  it('reaches the exception filter of the envelope', () => {
+    expect(portsOf(NovaModule.forRoot({ errors: { catalog } })).catalog).toBe(
+      catalog,
+    );
+  });
+
+  // El catálogo y el serializador que no se declaran los pone el estándar activo,
+  // que a veces trae los suyos: el filtro decide, no este módulo.
+  it('completes only the status mapper when nothing is declared', () => {
+    const ports = portsOf(NovaModule.forRoot());
+
+    expect(ports.statusMapper).toBeInstanceOf(NovaErrorStatusMapper);
+    expect(ports.catalog).toBeUndefined();
+    expect(ports.serializer).toBeUndefined();
+  });
+
+  // Declararlo no se lleva lo demás de `apiStandard`.
+  it('keeps the rest of the envelope options', () => {
+    const module = NovaModule.forRoot({
+      apiStandard: { internalErrorMessage: 'Algo falló de nuestro lado' },
+      errors: {},
+    });
+
+    expect(optionsOf(module)?.internalErrorMessage).toBe(
+      'Algo falló de nuestro lado',
+    );
   });
 });

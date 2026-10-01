@@ -1,0 +1,52 @@
+{
+  "name": "@ahincho/nova-nestjs-secrets-aws-secrets-manager",
+  "version": "0.15.0",
+  "description": "AWS Secrets Manager as a secret store for the Nova Platform NestJS meta-framework: the service imports aws-secrets-manager:<name or ARN> and reads the keys as environment variables",
+  "license": "EPL-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ahincho/nova-nestjs.git",
+    "directory": "packages/secrets-aws-secrets-manager"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://npm.pkg.github.com"
+  },
+  "type": "commonjs",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=24.15"
+  },
+  "scripts": {
+    "build": "nova build",
+    "clean": "rimraf dist coverage *.tsbuildinfo",
+    "test": "nova test",
+    "test:cov": "nova test:cov",
+    "typecheck": "nova typecheck"
+  },
+  "dependencies": {
+    "@aws-sdk/client-secrets-manager": "^3.1143.0"
+  },
+  "peerDependencies": {
+    "@ahincho/nova-nestjs": "workspace:^"
+  },
+  "devDependencies": {
+    "@ahincho/nova-nestjs": "workspace:*",
+    "@ahincho/nova-nestjs-toolchain": "workspace:*",
+    "@types/node": "catalog:",
+    "rimraf": "catalog:",
+    "testcontainers": "^12.2.0",
+    "vitest": "^5.0.0"
+  }
+}

@@ -2,30 +2,56 @@ import type { JwtClaims } from './jwt';
 
 export const AUTH_OPTIONS = Symbol('NOVA_AUTH_OPTIONS');
 
-/** El claim del que sale el identificador del usuario. */
+/**
+ * El claim del que sale el identificador del usuario. `preferred_username` es
+ * un claim estándar de OpenID Connect, no de un proveedor.
+ */
 export const DEFAULT_ID_CLAIM = 'preferred_username';
 
-/** Donde Keycloak pone los roles del realm. */
-export const DEFAULT_ROLES_CLAIM = 'realm_access.roles';
+/**
+ * Dónde están los roles. `roles` es el claim que define RFC 9068 para un token
+ * de acceso.
+ *
+ * Cada proveedor pone los suyos donde quiere -Keycloak, por ejemplo, en
+ * `realm_access.roles`-, y eso lo declara el perfil de la organización
+ * (ADR-036). Un default de un proveedor concreto dejaba en 401 a todo token
+ * que no fuera de ese proveedor.
+ */
+export const DEFAULT_ROLES_CLAIM = 'roles';
 
 /**
- * Roles que describen lo que el token puede hacer, no quién lo trae. Nombrarlos
- * evita que un usuario quede con rol `offline_access` porque venía primero.
+ * Roles que describen lo que el token puede hacer y no quién lo trae. Por
+ * defecto ninguno: cuáles son depende del proveedor. Keycloak, por ejemplo,
+ * agrega `offline_access` y `uma_authorization`.
  */
-export const DEFAULT_IGNORED_ROLES = [
-  'offline_access',
-  'uma_authorization',
-] as const;
+export const DEFAULT_IGNORED_ROLES: readonly string[] = [];
 
-/** Prefijos con la misma suerte: Keycloak agrega `default-roles-<realm>`. */
-export const DEFAULT_IGNORED_ROLE_PREFIXES = ['default-roles-'] as const;
+/**
+ * Prefijos de roles con el mismo tratamiento. Por defecto ninguno; Keycloak
+ * agrega `default-roles-<realm>`.
+ */
+export const DEFAULT_IGNORED_ROLE_PREFIXES: readonly string[] = [];
 
 /** La cabecera con la que el id del usuario viaja hacia los upstreams. */
 export const DEFAULT_USER_ID_HEADER = 'x-user-id';
 
 /**
+ * El identificador tal como vino, sin los espacios de los bordes.
+ *
+ * Es lo único que se puede hacer sin conocer al emisor: cualquier otra
+ * transformación inventa una convención.
+ */
+export function trimUserId(raw: string): string {
+  return raw.trim();
+}
+
+/**
  * Normaliza el identificador: sin espacios, sin la arroba inicial y en
  * mayúsculas, para que el mismo usuario sea la misma cadena en todos los logs.
+ *
+ * @deprecated Es la convención de una organización y ya no es el default: se
+ * declara en su perfil como `auth: { normalizeId: normalizeUserId }`. Sigue
+ * existiendo para no romper a quien la usaba.
  */
 export function normalizeUserId(raw: string): string {
   return raw.trim().replace(/^@/, '').toUpperCase();
@@ -40,12 +66,13 @@ export type NovaAuthModuleOptions = {
    */
   readonly idClaim?: string;
 
-  /** Cómo se normaliza ese valor. Por defecto {@link normalizeUserId}. */
+  /** Cómo se normaliza ese valor. Por defecto {@link trimUserId}. */
   readonly normalizeId?: (raw: string) => string;
 
   /**
-   * Dónde están los roles, como ruta con puntos. Por defecto
-   * `realm_access.roles`. Tiene que resolver a un arreglo.
+   * Dónde están los roles, como ruta con puntos. Por defecto `roles`, el claim
+   * de RFC 9068; con Keycloak es `realm_access.roles`. Tiene que resolver a un
+   * arreglo.
    */
   readonly rolesClaim?: string;
 
@@ -70,6 +97,13 @@ export type NovaAuthModuleOptions = {
   readonly userIdHeader?: string;
 
   /**
+   * Con qué cabecera viaja el rol hacia los upstreams. Sin default: el rol no
+   * sale del servicio si nadie lo pide, porque qué capa lo necesita es decisión
+   * de cada organización.
+   */
+  readonly roleHeader?: string;
+
+  /**
    * Comprueba la firma y devuelve los claims.
    *
    * **Sin esto no se verifica ninguna firma**: los claims se leen del token tal
@@ -88,6 +122,7 @@ export type ResolvedAuthOptions = {
   readonly ignoredRoles: readonly string[];
   readonly ignoredRolePrefixes: readonly string[];
   readonly userIdHeader: string;
+  readonly roleHeader: string | undefined;
   readonly verify:
     ((token: string) => JwtClaims | Promise<JwtClaims>) | undefined;
 };
@@ -97,13 +132,14 @@ export function resolveAuthOptions(
 ): ResolvedAuthOptions {
   return {
     idClaim: options.idClaim ?? DEFAULT_ID_CLAIM,
-    normalizeId: options.normalizeId ?? normalizeUserId,
+    normalizeId: options.normalizeId ?? trimUserId,
     rolesClaim: options.rolesClaim ?? DEFAULT_ROLES_CLAIM,
     preferredRoles: options.preferredRoles ?? [],
     ignoredRoles: options.ignoredRoles ?? DEFAULT_IGNORED_ROLES,
     ignoredRolePrefixes:
       options.ignoredRolePrefixes ?? DEFAULT_IGNORED_ROLE_PREFIXES,
     userIdHeader: options.userIdHeader ?? DEFAULT_USER_ID_HEADER,
+    roleHeader: options.roleHeader,
     verify: options.verify,
   };
 }

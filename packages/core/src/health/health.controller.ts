@@ -84,12 +84,19 @@ function readinessIndicators(
 /**
  * En warn y no en error: una dependencia que parpadea tiene que verse sin que
  * cada ciclo de la sonda parezca una caída.
+ *
+ * El chequeo y su motivo van como campos: pegados al mensaje, cada motivo
+ * distinto era un mensaje distinto, y no había cómo contar las caídas de un
+ * chequeo sin parsear texto.
  */
 function warnAboutFailures(logger: Logger, result: HealthCheckResult): void {
   for (const [name, detail] of Object.entries(result.error ?? {})) {
     const message =
       typeof detail?.['message'] === 'string' ? detail['message'] : 'down';
-    logger.warn(`Readiness check "${name}" failed: ${message}`);
+    logger.warn(
+      { readiness: { check: name, message } },
+      'Readiness check failed',
+    );
   }
 }
 

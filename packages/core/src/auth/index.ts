@@ -13,6 +13,7 @@ export {
   DEFAULT_USER_ID_HEADER,
   normalizeUserId,
   resolveAuthOptions,
+  trimUserId,
   type NovaAuthModuleOptions,
   type ResolvedAuthOptions,
 } from './tokens';

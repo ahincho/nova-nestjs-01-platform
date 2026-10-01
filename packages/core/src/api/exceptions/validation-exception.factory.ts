@@ -1,14 +1,18 @@
-import { errorItem, type ApiErrorItem } from '../../api-standard';
-import { ValidationException } from './validation.exception';
+import {
+  ValidationException,
+  type ValidationViolation,
+} from './validation.exception';
 
-export const VALIDATION_ERROR_CODE = 'VALIDATION_ERROR';
+// Vive con el resto del catálogo; se reexporta acá porque es donde siempre se
+// importó.
+export { VALIDATION_ERROR_CODE } from '../../api-standard/error-code';
 
 /**
  * The shape of a `class-validator` `ValidationError`, declared structurally.
  *
  * Declaring it here rather than importing the class is what keeps this package
  * free of a runtime dependency on `class-validator`: an application using a
- * different validator can hand over the same shape and get the same envelope.
+ * different validator can hand over the same shape and get the same response.
  */
 export type ValidationErrorLike = {
   readonly property: string;
@@ -16,40 +20,43 @@ export type ValidationErrorLike = {
   readonly children?: readonly ValidationErrorLike[];
 };
 
-function toErrorItems(
+function toViolations(
   errors: readonly ValidationErrorLike[],
   parentPath = '',
-): ApiErrorItem[] {
-  const items: ApiErrorItem[] = [];
+): ValidationViolation[] {
+  const violations: ValidationViolation[] = [];
 
   for (const error of errors) {
     const path = parentPath
       ? parentPath + '.' + error.property
       : error.property;
 
+    // Sin código: cómo se llama un fallo de validación es del catálogo del
+    // estándar activo, no de esta fábrica.
     for (const message of Object.values(error.constraints ?? {})) {
-      items.push(errorItem(VALIDATION_ERROR_CODE, message, path));
+      violations.push({ field: path, message });
     }
 
     // A nested DTO reports its own failures under `children`. Flattening them
     // with a dotted path is what lets the client point at `address.zipCode`
     // instead of at `address`.
     if (error.children && error.children.length > 0) {
-      items.push(...toErrorItems(error.children, path));
+      violations.push(...toViolations(error.children, path));
     }
   }
 
-  return items;
+  return violations;
 }
 
 /**
  * Turns validation errors into a {@link ValidationException}.
  *
  * Wire it into the global pipe as the `exceptionFactory`, so a failed DTO comes
- * back as the standard envelope with one entry per constraint.
+ * back with one entry per constraint, in the shape of the active standard.
+ * `bootstrap()` already does.
  */
 export function validationExceptionFactory(
   errors: readonly ValidationErrorLike[],
 ): ValidationException {
-  return new ValidationException(toErrorItems(errors));
+  return new ValidationException(toViolations(errors));
 }

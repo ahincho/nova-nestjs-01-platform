@@ -28,6 +28,9 @@ export const DEFAULT_CORRELATION_HEADERS = [
   'x-request-id',
   'x-user-id',
   'x-tenant-id',
+  // Un BFF no tiene estado y no aplica la idempotencia: pasa la clave al servicio
+  // que sí la aplica, como pedidos en Plaza (ADR-047).
+  'idempotency-key',
 ] as const;
 
 export type IncomingHeaders = Readonly<
@@ -47,28 +50,49 @@ function firstValue(value: string | string[] | undefined): string | undefined {
  * @param headers - the incoming headers, read case-insensitively.
  * @param correlationHeaders - which headers to carry, the first being the id.
  * @param generateId - produces an id when the caller did not send one.
+ * @param existingId - un id que alguien ya puso sobre la petición, típicamente
+ * el `req.id` de pino-http. Gana sobre generar uno nuevo, y por eso el contexto
+ * y el log dicen lo mismo sin importar cuál de los dos middlewares corrió
+ * primero. No gana sobre la cabecera: si el llamador mandó un id, ese es el que
+ * hay que propagar.
+ * @param accept - de qué cabeceras se toma el id del llamador, en orden. Por
+ * defecto, la misma con la que viaja. El borde puede recibirlo con otro nombre
+ * (ADR-037), y hacia adentro sigue viajando con el primero de
+ * `correlationHeaders`.
  */
 export function buildRequestContext(
   headers: IncomingHeaders,
   correlationHeaders: readonly string[],
   generateId: () => string,
+  existingId?: string,
+  accept?: readonly string[],
 ): RequestContext {
   const lowercased: Record<string, string | string[] | undefined> = {};
   for (const [name, value] of Object.entries(headers)) {
     lowercased[name.toLowerCase()] = value;
   }
 
+  const read = (name: string): string | undefined => {
+    const value = firstValue(lowercased[name.toLowerCase()]);
+    // Vacío es lo mismo que ausente: un id vacío correlaciona todo con todo.
+    return value === '' ? undefined : value;
+  };
+
   const [idHeader = 'x-request-id', ...rest] = correlationHeaders;
-  const requestId = firstValue(lowercased[idHeader]) ?? generateId();
+  const adopted = existingId === '' ? undefined : existingId;
+  const sent = (accept ?? [idHeader])
+    .map(read)
+    .find((value) => value !== undefined);
+  const requestId = sent ?? adopted ?? generateId();
 
   const propagated: Record<string, string> = { [idHeader]: requestId };
 
   for (const name of rest) {
-    const value = firstValue(lowercased[name]);
+    const value = read(name);
     // Absent headers are left out rather than sent empty: an empty `x-user-id`
     // downstream reads as "there is a user and it has no id", which is worse
     // than saying nothing.
-    if (value !== undefined && value !== '') {
+    if (value !== undefined) {
       propagated[name] = value;
     }
   }

@@ -1,7 +1,12 @@
 import { ValidationPipe, type INestApplication } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { bootstrap } from './bootstrap';
+import {
+  OBSERVABILITY_OPTIONS,
+  resolveObservabilityOptions,
+} from './observability';
 import { setupOpenApi } from './openapi';
+import { NOVA_PROFILE, defineProfile } from './profile';
 import type { Mock } from 'vitest';
 
 // El montaje se sustituye porque necesita una aplicación de verdad para
@@ -20,7 +25,37 @@ type AppDouble = {
   enableCors: Mock;
   enableShutdownHooks: Mock;
   listen: Mock;
+  close: Mock;
+  get: Mock;
 };
+
+const PORT_VARIABLES = ['APP_PORT', 'PORT', 'HTTP_PORT'];
+const SECRET_VARIABLES = [
+  'CREDENTIALS_DB',
+  'NOVA_SECRETS',
+  'NOVA_SECRETS_IMPORT',
+  'DB_HOST',
+  'DB_PASSWORD',
+];
+
+/** Un almacén en memoria, como lo pasaría una prueba en `sources`. */
+const MEMORY_STORE = {
+  name: 'memory',
+  create: () => ({
+    find: (reference: string) =>
+      Promise.resolve(
+        reference === 'ms-course'
+          ? { reference, entries: { DB_PASSWORD: 'from-the-store' } }
+          : undefined,
+      ),
+  }),
+};
+
+function clearEnvironment(): void {
+  for (const name of [...PORT_VARIABLES, ...SECRET_VARIABLES]) {
+    delete process.env[name];
+  }
+}
 
 describe('bootstrap', () => {
   let app: AppDouble;
@@ -33,17 +68,23 @@ describe('bootstrap', () => {
       enableCors: vi.fn(),
       enableShutdownHooks: vi.fn(),
       listen: vi.fn().mockResolvedValue(undefined),
+      close: vi.fn().mockResolvedValue(undefined),
+      // Por defecto no hay nada que resolver: es el servicio que apagó el
+      // logger de la plataforma, y ahí queda el de Nest.
+      get: vi.fn().mockImplementation(() => {
+        throw new Error('not registered');
+      }),
     };
 
     vi.spyOn(NestFactory, 'create').mockResolvedValue(
       app as unknown as INestApplication,
     );
-    delete process.env['PORT'];
+    clearEnvironment();
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
-    delete process.env['PORT'];
+    clearEnvironment();
   });
 
   class AppModule {}
@@ -86,6 +127,38 @@ describe('bootstrap', () => {
     });
     expect(app.enableCors).toHaveBeenCalledWith(
       expect.objectContaining({ origin: ['https://nova.example.edu'] }),
+    );
+  });
+
+  // CORS permite justo las cabeceras que el contexto lee, porque las toma del
+  // mismo lugar: declararlas dos veces es cómo un borde acepta una cabecera que
+  // el navegador no puede mandar (ADR-037).
+  it('lets the browser send and read the request id the edge uses', async () => {
+    app.get.mockImplementation((token: unknown) => {
+      if (token === OBSERVABILITY_OPTIONS) {
+        return resolveObservabilityOptions({
+          requestId: { accept: ['transaction-id', 'x-request-id'] },
+        });
+      }
+      throw new Error('not registered');
+    });
+
+    await bootstrap(AppModule, {
+      cors: { origins: 'https://nova.example.edu' },
+    });
+
+    expect(app.enableCors).toHaveBeenCalledWith(
+      expect.objectContaining({
+        allowedHeaders: expect.arrayContaining([
+          'transaction-id',
+          'x-request-id',
+        ]) as string[],
+        exposedHeaders: [
+          'transaction-id',
+          'Idempotent-Replayed',
+          'Retry-After',
+        ],
+      }),
     );
   });
 
@@ -139,6 +212,253 @@ describe('bootstrap', () => {
     await bootstrap(AppModule, { logger });
 
     expect(app.useLogger).toHaveBeenCalledWith(logger);
+  });
+
+  // El logger estructurado se resuelve del contenedor en vez de construirse
+  // acá, para que sea el mismo que inyectan los servicios: dos instancias son
+  // dos configuraciones que se pueden separar sin que nadie lo note.
+  it('installs the platform logger when no other is given', async () => {
+    const platform = { log: vi.fn(), error: vi.fn(), warn: vi.fn() };
+    // Como en una aplicación de verdad: el módulo registra su perfil -ninguno-
+    // y el logger, cada uno bajo su token.
+    app.get.mockImplementation((token: unknown) =>
+      token === NOVA_PROFILE ? null : platform,
+    );
+
+    await bootstrap(AppModule);
+
+    expect(app.useLogger).toHaveBeenCalledWith(platform);
+  });
+
+  it('leaves the Nest logger alone when the platform mounted none', async () => {
+    await bootstrap(AppModule);
+
+    expect(app.useLogger).not.toHaveBeenCalled();
+  });
+
+  describe('the port', () => {
+    // PORT es la convención de Node. Otra variable -la que inyecta la
+    // plataforma de una organización- la declara su perfil.
+    it('reads only PORT by default', async () => {
+      process.env['APP_PORT'] = '8080';
+      process.env['PORT'] = '3000';
+
+      await bootstrap(AppModule);
+
+      expect(app.listen).toHaveBeenCalledWith(3000, '0.0.0.0');
+    });
+
+    it('reads the variables the profile declares, in order', async () => {
+      process.env['APP_PORT'] = '8080';
+      process.env['PORT'] = '3000';
+      const acme = defineProfile({
+        name: 'acme',
+        bootstrap: { portVariables: ['APP_PORT', 'PORT'] },
+      });
+
+      await bootstrap(AppModule, { profile: acme });
+
+      expect(app.listen).toHaveBeenCalledWith(8080, '0.0.0.0');
+    });
+
+    it('skips a variable that was left blank', async () => {
+      process.env['APP_PORT'] = '   ';
+      process.env['PORT'] = '4002';
+
+      await bootstrap(AppModule, { portVariables: ['APP_PORT', 'PORT'] });
+
+      expect(app.listen).toHaveBeenCalledWith(4002, '0.0.0.0');
+    });
+
+    it('lets a service name its own variables', async () => {
+      process.env['HTTP_PORT'] = '9000';
+      process.env['APP_PORT'] = '8080';
+
+      await bootstrap(AppModule, { portVariables: ['HTTP_PORT'] });
+
+      expect(app.listen).toHaveBeenCalledWith(9000, '0.0.0.0');
+    });
+
+    // Nombrar la que se encontró y no la lista entera es lo que hace el mensaje
+    // accionable.
+    it('dies naming the variable that is not a number', async () => {
+      process.env['PORT'] = 'eight thousand';
+
+      await expect(bootstrap(AppModule)).rejects.toThrow('PORT');
+    });
+  });
+
+  describe('the injected secrets', () => {
+    it('does nothing unless the service asks', async () => {
+      process.env['CREDENTIALS_DB'] = JSON.stringify({ DB_HOST: 'academic' });
+
+      await bootstrap(AppModule);
+
+      expect(process.env['DB_HOST']).toBeUndefined();
+    });
+
+    // Antes de crear la aplicación, no después: cada registerAs valida sus
+    // variables al instanciarse el módulo.
+    it('unfolds before the application exists', async () => {
+      process.env['CREDENTIALS_DB'] = JSON.stringify({ DB_HOST: 'academic' });
+      let hostWhenCreated: string | undefined;
+      vi.mocked(NestFactory.create).mockImplementation(() => {
+        hostWhenCreated = process.env['DB_HOST'];
+        return Promise.resolve(app as unknown as INestApplication);
+      });
+
+      await bootstrap(AppModule, { secrets: { prefix: 'CREDENTIALS_' } });
+
+      expect(hostWhenCreated).toBe('academic');
+    });
+
+    it('takes the options straight through', async () => {
+      process.env['CREDENTIALS_DB'] = JSON.stringify({ DB_HOST: 'academic' });
+
+      await bootstrap(AppModule, { secrets: { prefix: false } });
+
+      expect(process.env['DB_HOST']).toBeUndefined();
+    });
+
+    it('stops the boot on a malformed secret', async () => {
+      process.env['CREDENTIALS_DB'] = 'not json';
+
+      await expect(
+        bootstrap(AppModule, { secrets: { prefix: 'CREDENTIALS_' } }),
+      ).rejects.toThrow('CREDENTIALS_DB');
+    });
+
+    // Sin perfil no hay prefijo que adivinar: `true` sólo desdobla lo que se
+    // nombra en tiempo de ejecución.
+    it('reads only NOVA_SECRETS when told true without a profile', async () => {
+      process.env['CREDENTIALS_DB'] = JSON.stringify({ DB_HOST: 'academic' });
+
+      await bootstrap(AppModule, { secrets: true });
+      expect(process.env['DB_HOST']).toBeUndefined();
+
+      process.env['NOVA_SECRETS'] = 'CREDENTIALS_DB';
+      await bootstrap(AppModule, { secrets: true });
+      expect(process.env['DB_HOST']).toBe('academic');
+    });
+
+    it('reads a store before the application exists', async () => {
+      let passwordWhenCreated: string | undefined;
+      vi.mocked(NestFactory.create).mockImplementation(() => {
+        passwordWhenCreated = process.env['DB_PASSWORD'];
+        return Promise.resolve(app as unknown as INestApplication);
+      });
+
+      await bootstrap(AppModule, {
+        secrets: { imports: ['memory:ms-course'], sources: [MEMORY_STORE] },
+      });
+
+      expect(passwordWhenCreated).toBe('from-the-store');
+    });
+
+    // Un pedido es explícito: quien opera el servicio lo puso en la task
+    // definition, así que se lee aunque el servicio no declare nada.
+    it('reads NOVA_SECRETS_IMPORT even when the service declares nothing', async () => {
+      process.env['NOVA_SECRETS_IMPORT'] = 'key-vault:ms-course';
+
+      await expect(bootstrap(AppModule)).rejects.toThrow(
+        'needs the package @ahincho/nova-nestjs-secrets-key-vault',
+      );
+    });
+
+    it('lets the service turn the stores off too', async () => {
+      process.env['NOVA_SECRETS_IMPORT'] = 'vault:ms-course';
+
+      await bootstrap(AppModule, { secrets: false });
+
+      expect(process.env['DB_PASSWORD']).toBeUndefined();
+    });
+
+    describe('with a profile', () => {
+      const acme = defineProfile({
+        name: 'acme',
+        bootstrap: { secrets: { prefix: 'CREDENTIALS_' } },
+      });
+
+      it('unfolds by the convention of the profile', async () => {
+        process.env['CREDENTIALS_DB'] = JSON.stringify({ DB_HOST: 'academic' });
+
+        await bootstrap(AppModule, { profile: acme });
+
+        expect(process.env['DB_HOST']).toBe('academic');
+      });
+
+      it('lets the service turn it off', async () => {
+        process.env['CREDENTIALS_DB'] = JSON.stringify({ DB_HOST: 'academic' });
+
+        await bootstrap(AppModule, { profile: acme, secrets: false });
+
+        expect(process.env['DB_HOST']).toBeUndefined();
+      });
+
+      it('lets the service add to the convention', async () => {
+        process.env['LEGACY_CREDENTIALS'] = JSON.stringify({ DB_HOST: 'erp' });
+
+        await bootstrap(AppModule, {
+          profile: acme,
+          secrets: { variables: ['LEGACY_CREDENTIALS'] },
+        });
+
+        expect(process.env['DB_HOST']).toBe('erp');
+        delete process.env['LEGACY_CREDENTIALS'];
+      });
+    });
+  });
+
+  describe('a profile', () => {
+    const acme = defineProfile({
+      name: 'acme',
+      bootstrap: { globalPrefix: 'api/v1' },
+      health: { legacyPath: 'api/v1/health' },
+    });
+
+    beforeEach(() => {
+      app.get.mockImplementation((token: unknown) => {
+        if (token === NOVA_PROFILE) {
+          return 'acme';
+        }
+        throw new Error('not registered');
+      });
+    });
+
+    it('brings its prefix and keeps its legacy probe out of it', async () => {
+      await bootstrap(AppModule, { profile: acme });
+
+      expect(app.setGlobalPrefix).toHaveBeenCalledWith('api/v1', {
+        exclude: ['health/live', 'health/ready', 'api/v1/health'],
+      });
+    });
+
+    it('gives way to what the service declares', async () => {
+      await bootstrap(AppModule, { profile: acme, globalPrefix: 'api/v2' });
+
+      expect(app.setGlobalPrefix).toHaveBeenCalledWith(
+        'api/v2',
+        expect.anything(),
+      );
+    });
+
+    // Declarado en dos lugares, el olvido de uno se ve al arrancar y no como
+    // una configuración mitad de cada perfil.
+    it('stops the boot when the module received another one', async () => {
+      await expect(bootstrap(AppModule)).rejects.toThrow(
+        'NovaModule.forRoot() received the profile acme but bootstrap() received none',
+      );
+      expect(app.close).toHaveBeenCalled();
+      expect(app.listen).not.toHaveBeenCalled();
+    });
+
+    it('is not compared when the application does not use NovaModule', async () => {
+      app.get.mockImplementation(() => {
+        throw new Error('not registered');
+      });
+
+      await expect(bootstrap(AppModule, { profile: acme })).resolves.toBe(app);
+    });
   });
 
   it('buffers the logs until the logger is installed', async () => {

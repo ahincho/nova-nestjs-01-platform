@@ -3,6 +3,7 @@ export {
   ApiEnvelopeSchema,
   ApiErrorItemSchema,
   ApiErrors,
+  ApiMetadataSchema,
   type ApiEnvelopeOptions,
 } from './envelope';
 export {

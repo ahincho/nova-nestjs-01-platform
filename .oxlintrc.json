@@ -23,6 +23,27 @@
         "typescript/no-require-imports": "off",
         "typescript/unbound-method": "off"
       }
+    },
+    {
+      // El módulo de errores no importa ningún framework web (ADR-031): es lo
+      // que deja que el mismo caso de uso corra detrás de HTTP o de un
+      // consumidor de cola. La regla ve lo que importa cada archivo de la
+      // carpeta; lo que llega por otro módulo lo sigue
+      // `errors/framework-free.spec.ts`.
+      "files": ["packages/core/src/errors/**/*.ts"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["@nestjs/*", "express", "fastify", "@fastify/*"],
+                "message": "El módulo de errores no importa ningún framework web (ADR-031)."
+              }
+            ]
+          }
+        ]
+      }
     }
   ]
 }

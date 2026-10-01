@@ -11,6 +11,7 @@ import {
   DEFAULT_USER_ID_HEADER,
   normalizeUserId,
   resolveAuthOptions,
+  trimUserId,
 } from './tokens';
 
 type Provider = { provide?: unknown; useExisting?: unknown };
@@ -19,7 +20,7 @@ describe('resolveAuthOptions', () => {
   it('applies the defaults', () => {
     expect(resolveAuthOptions()).toEqual({
       idClaim: DEFAULT_ID_CLAIM,
-      normalizeId: normalizeUserId,
+      normalizeId: trimUserId,
       rolesClaim: DEFAULT_ROLES_CLAIM,
       preferredRoles: [],
       ignoredRoles: DEFAULT_IGNORED_ROLES,
@@ -46,6 +47,23 @@ describe('resolveAuthOptions', () => {
       preferredRoles: ['admin'],
       userIdHeader: 'x-actor',
     });
+  });
+});
+
+// Los defaults son los de los estándares, no los de un proveedor: `roles` de
+// RFC 9068 y ningún rol técnico que descartar.
+describe('the generic defaults', () => {
+  it('read the roles of RFC 9068', () => {
+    expect(DEFAULT_ROLES_CLAIM).toBe('roles');
+  });
+
+  it('ignore no role of any provider', () => {
+    expect(DEFAULT_IGNORED_ROLES).toEqual([]);
+    expect(DEFAULT_IGNORED_ROLE_PREFIXES).toEqual([]);
+  });
+
+  it('only trim the identifier', () => {
+    expect(trimUserId('  @Ana  ')).toBe('@Ana');
   });
 });
 

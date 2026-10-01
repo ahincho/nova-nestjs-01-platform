@@ -82,6 +82,47 @@ describe('ApiResponses.errorOf', () => {
   });
 });
 
+describe('ApiResponses.withMetadata', () => {
+  it('adds the metadata and keeps the rest of the envelope', () => {
+    const response = ApiResponses.withMetadata(
+      ApiResponses.errorOf(404, 'Student not found'),
+      { traceId: 'trace-1' },
+    );
+
+    expect(response).toEqual({
+      success: false,
+      status: 404,
+      data: null,
+      errors: [
+        { code: 'NOT_FOUND', message: 'Student not found', field: null },
+      ],
+      metadata: { traceId: 'trace-1' },
+    });
+  });
+
+  // El sobre recibido puede ser de alguien más: escribir sobre él haría que dos
+  // respuestas compartieran la misma metadata.
+  it('leaves the envelope it was given untouched', () => {
+    const original = ApiResponses.errorOf(500, 'Internal server error');
+
+    ApiResponses.withMetadata(original, { traceId: 'trace-1' });
+
+    expect(original).not.toHaveProperty('metadata');
+  });
+
+  // Un cliente viejo no conoce `metadata`, y el interceptor tiene que seguir
+  // reconociendo el sobre con ella.
+  it('is still recognised as an envelope', () => {
+    expect(
+      ApiResponses.isApiResponse(
+        ApiResponses.withMetadata(ApiResponses.errorOf(404, 'x'), {
+          traceId: null,
+        }),
+      ),
+    ).toBe(true);
+  });
+});
+
 describe('ApiResponses.isApiResponse', () => {
   it('recognises an envelope this module built', () => {
     expect(ApiResponses.isApiResponse(ApiResponses.ok({ id: 1 }))).toBe(true);

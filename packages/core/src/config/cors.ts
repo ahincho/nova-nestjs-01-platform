@@ -16,11 +16,41 @@ export type CorsPolicyOptions = {
   readonly maxAgeSeconds?: number;
 };
 
+/**
+ * Las cabeceras con las que el id de correlación entra y sale por el borde
+ * (ADR-037). Es la misma forma que resuelve el módulo de observabilidad.
+ */
+export type CorsRequestIdHeaders = {
+  readonly accept: readonly string[];
+  readonly echo: string;
+};
+
 const DEFAULT_ALLOWED_HEADERS = [
   'Content-Type',
   'Authorization',
   'x-request-id',
+  // Una compra que se reintenta desde el navegador lleva su clave (ADR-047).
+  'Idempotency-Key',
 ];
+
+/**
+ * Lo que el script tiene que poder leer de una operación idempotente (ADR-047):
+ * si la respuesta es una repetida y cuánto esperar ante un 409. Ninguna de las dos
+ * es una cabecera simple, así que sin esto el navegador las esconde.
+ */
+const IDEMPOTENCY_EXPOSED_HEADERS = ['Idempotent-Replayed', 'Retry-After'];
+
+function unique(headers: readonly string[]): string[] {
+  const seen = new Set<string>();
+  return headers.filter((header) => {
+    const key = header.toLowerCase();
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
+}
 
 /**
  * Builds the CORS policy from the single variable that declares it.
@@ -31,8 +61,16 @@ const DEFAULT_ALLOWED_HEADERS = [
  *
  * An empty list allows no origin at all, so a container nobody configured fails
  * closed rather than open.
+ *
+ * @param requestId - con qué cabeceras entra y sale el id de correlación. Se
+ * permiten las de entrada y se expone la de salida sin declararlas aparte: un
+ * borde que recibe el id con su propio nombre no sirve si el navegador no puede
+ * mandarlo, ni si el script no puede leer el que vuelve.
  */
-export function buildCorsOptions(options: CorsPolicyOptions): CorsOptions {
+export function buildCorsOptions(
+  options: CorsPolicyOptions,
+  requestId?: CorsRequestIdHeaders,
+): CorsOptions {
   return {
     origin: options.origins
       .split(',')
@@ -45,15 +83,21 @@ export function buildCorsOptions(options: CorsPolicyOptions): CorsOptions {
     // a session.
     credentials: false,
 
-    allowedHeaders: [
+    allowedHeaders: unique([
       ...DEFAULT_ALLOWED_HEADERS,
+      ...(requestId?.accept ?? []),
       ...(options.allowedHeaders ?? []),
-    ],
+    ]),
 
     // A browser hides a non-simple response header from JavaScript unless the
     // server lists it here, so without this the correlation id set on the
     // response is unreadable by the caller that needs it to report a failure.
-    exposedHeaders: [...(options.exposedHeaders ?? ['x-request-id'])],
+    exposedHeaders: unique([
+      ...(requestId
+        ? [requestId.echo, ...(options.exposedHeaders ?? [])]
+        : (options.exposedHeaders ?? ['x-request-id'])),
+      ...IDEMPOTENCY_EXPOSED_HEADERS,
+    ]),
 
     // Authorization is not a simple header, so every call is preceded by an
     // OPTIONS. Without this the preflight repeats on every single request.

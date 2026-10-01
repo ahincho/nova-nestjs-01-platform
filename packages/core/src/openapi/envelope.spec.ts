@@ -95,6 +95,25 @@ describe('the envelope decorators', () => {
     expect(response).toMatchObject({ description: 'NOT_FOUND' });
   });
 
+  // ADR-031: un error trae `metadata.traceId`, y el documento tiene que decir
+  // que la trae; un éxito no, así que en el sobre base es opcional.
+  it('declares the metadata of the envelope as optional', () => {
+    const envelope = document.components?.schemas?.['ApiEnvelopeSchema'] as {
+      required?: string[];
+      properties?: Record<string, unknown>;
+    };
+
+    expect(document.components?.schemas).toHaveProperty('ApiMetadataSchema');
+    expect(envelope.properties).toHaveProperty('metadata');
+    expect(envelope.required).not.toContain('metadata');
+  });
+
+  it('documents the metadata as present on a failure', () => {
+    const response = document.paths['/courses/{id}']?.get?.responses['404'];
+
+    expect(JSON.stringify(response)).toContain('"required":["metadata"]');
+  });
+
   it('documents a failure as an envelope with no data', () => {
     const response = document.paths['/courses/{id}']?.get?.responses['404'];
 

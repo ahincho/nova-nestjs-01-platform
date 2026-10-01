@@ -35,17 +35,23 @@ export class RequestContextMiddleware implements NestMiddleware {
       request.headers,
       this.options.correlationHeaders,
       this.options.generateId,
+      // Si pino-http corrió primero, ya hay un `req.id`: se adopta en vez de
+      // generar otro. Dos ids para una misma petición es lo mismo que ninguno,
+      // porque la traza se corta justo donde alguien la va a buscar.
+      request.id,
+      this.options.requestId.accept,
     );
 
-    // `req.id` es la convencion que leen pino-http y el filtro de excepciones
-    // de la plataforma. Sin esto el contexto tiene el id pero la linea de log
-    // de un 5xx sale con `requestId: undefined`, que es justo la linea desde la
+    // `req.id` es la convención que leen pino-http y el filtro de excepciones
+    // de la plataforma. Sin esto el contexto tiene el id pero la línea de log
+    // de un 5xx sale con `traceId: undefined`, que es justo la línea desde la
     // que alguien va a querer seguir la traza.
     request.id = context.requestId;
 
+    // Con el nombre del borde, no con el de adentro: el llamador lo recibe como
+    // lo mandó, aunque hacia los upstreams viaje con otro.
     if (this.options.echoRequestId) {
-      const [idHeader = 'x-request-id'] = this.options.correlationHeaders;
-      response.setHeader?.(idHeader, context.requestId);
+      response.setHeader?.(this.options.requestId.echo, context.requestId);
     }
 
     this.context.run(context, next);

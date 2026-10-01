@@ -63,6 +63,13 @@ export class NovaAuthGuard implements CanActivate {
   ) {}
 
   async canActivate(execution: ExecutionContext): Promise<boolean> {
+    // La identidad que viaja hacia adentro la escribe sólo la autenticación
+    // (ADR-037). Lo que el contexto haya copiado de la petición con estos
+    // nombres lo escribió quien llama, y se quita antes de mirar si la ruta es
+    // pública: en una `@Public()` el guard termina acá, y sin esto eso viajaría
+    // hacia los upstreams como si fuera el usuario.
+    this.context?.remove(this.identityHeaders());
+
     const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC, [
       execution.getHandler(),
       execution.getClass(),
@@ -81,11 +88,29 @@ export class NovaAuthGuard implements CanActivate {
     const principal = resolvePrincipal(await this.claims(token), this.options);
     request.user = principal;
 
-    // Con esto el id del usuario sale hacia cada upstream sin que ningún punto
-    // de llamada lo pase, igual que el id de correlación.
-    this.context?.enrich({ [this.options.userIdHeader]: principal.id });
+    // Con esto el id del usuario -y el rol, si se pidió- sale hacia cada
+    // upstream sin que ningún punto de llamada lo pase, igual que el id de
+    // correlación.
+    this.context?.enrich(this.identity(principal));
 
     return true;
+  }
+
+  /** Las cabeceras que escribe la autenticación y nadie más. */
+  private identityHeaders(): string[] {
+    const { userIdHeader, roleHeader } = this.options;
+    return roleHeader === undefined
+      ? [userIdHeader]
+      : [userIdHeader, roleHeader];
+  }
+
+  private identity(principal: Principal): Record<string, string> {
+    const { userIdHeader, roleHeader } = this.options;
+    const headers: Record<string, string> = { [userIdHeader]: principal.id };
+    if (roleHeader !== undefined) {
+      headers[roleHeader] = principal.role;
+    }
+    return headers;
   }
 
   private async claims(token: string): Promise<JwtClaims> {

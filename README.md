@@ -57,11 +57,11 @@ porque no aíslan.
 
 ## Paquetes
 
-| Paquete                                                  | Qué es                                                                                                             |
-| -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| [`@ahincho/nova-nestjs`](packages/core)                  | runtime: sobre de respuesta, configuración, cliente HTTP, contexto de request, salud, `NovaModule` y `bootstrap()` |
-| [`@ahincho/nova-nestjs-toolchain`](packages/toolchain)   | el comando `nova` y los presets de TypeScript, oxlint y Vitest                                                     |
-| [`@ahincho/nova-nestjs-schematics`](packages/schematics) | generadores `feature` (bff y acl) y `upstream`                                                                     |
+| Paquete                                                  | Qué es                                                                                                                       |
+| -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| [`@ahincho/nova-nestjs`](packages/core)                  | runtime: estándar de API reemplazable, configuración, cliente HTTP, contexto de request, salud, `NovaModule` y `bootstrap()` |
+| [`@ahincho/nova-nestjs-toolchain`](packages/toolchain)   | el comando `nova` y los presets de TypeScript, oxlint y Vitest                                                               |
+| [`@ahincho/nova-nestjs-schematics`](packages/schematics) | generadores `feature` (bff y acl) y `upstream`                                                                               |
 
 Los tres se publican con **un solo número de versión**, como hace `@nestjs/*`.
 
