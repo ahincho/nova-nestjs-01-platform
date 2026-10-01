@@ -1,6 +1,6 @@
 import type { ApiStandardModuleOptions, NovaErrorsOptions } from './api';
 import type { NovaAuthModuleOptions } from './auth';
-import type { UnfoldSecretsOptions } from './config';
+import type { SecretsOptions } from './config';
 import type { NovaHealthModuleOptions } from './health';
 import type { NovaHttpModuleOptions } from './http';
 import type { NovaObservabilityModuleOptions } from './observability';
@@ -22,11 +22,12 @@ export type NovaProfileBootstrapOptions = {
   readonly portVariables?: readonly string[];
 
   /**
-   * Cómo se desdoblan los secretos que inyecta la plataforma de la
-   * organización. Declararlo enciende el desdoblado para todo servicio del
-   * perfil; un servicio lo apaga con `secrets: false`.
+   * Cómo llegan los secretos de la organización: lo que se desdobla del
+   * entorno que inyecta su plataforma y, si los usa, los almacenes que pide.
+   * Declararlo enciende el desdoblado para todo servicio del perfil; un
+   * servicio lo apaga con `secrets: false`.
    */
-  readonly secrets?: UnfoldSecretsOptions;
+  readonly secrets?: SecretsOptions;
 
   /** Prefijo de todas las rutas salvo las sondas. */
   readonly globalPrefix?: string;

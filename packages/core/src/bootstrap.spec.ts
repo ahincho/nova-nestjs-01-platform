@@ -30,7 +30,26 @@ type AppDouble = {
 };
 
 const PORT_VARIABLES = ['APP_PORT', 'PORT', 'HTTP_PORT'];
-const SECRET_VARIABLES = ['SECRET_DB', 'NOVA_SECRETS', 'DB_HOST'];
+const SECRET_VARIABLES = [
+  'CREDENTIALS_DB',
+  'NOVA_SECRETS',
+  'NOVA_SECRETS_IMPORT',
+  'DB_HOST',
+  'DB_PASSWORD',
+];
+
+/** Un almacén en memoria, como lo pasaría una prueba en `sources`. */
+const MEMORY_STORE = {
+  name: 'memory',
+  create: () => ({
+    find: (reference: string) =>
+      Promise.resolve(
+        reference === 'ms-course'
+          ? { reference, entries: { DB_PASSWORD: 'from-the-store' } }
+          : undefined,
+      ),
+  }),
+};
 
 function clearEnvironment(): void {
   for (const name of [...PORT_VARIABLES, ...SECRET_VARIABLES]) {
@@ -134,7 +153,11 @@ describe('bootstrap', () => {
           'transaction-id',
           'x-request-id',
         ]) as string[],
-        exposedHeaders: ['transaction-id'],
+        exposedHeaders: [
+          'transaction-id',
+          'Idempotent-Replayed',
+          'Retry-After',
+        ],
       }),
     );
   });
@@ -267,7 +290,7 @@ describe('bootstrap', () => {
 
   describe('the injected secrets', () => {
     it('does nothing unless the service asks', async () => {
-      process.env['SECRET_DB'] = JSON.stringify({ DB_HOST: 'academic' });
+      process.env['CREDENTIALS_DB'] = JSON.stringify({ DB_HOST: 'academic' });
 
       await bootstrap(AppModule);
 
@@ -277,20 +300,20 @@ describe('bootstrap', () => {
     // Antes de crear la aplicación, no después: cada registerAs valida sus
     // variables al instanciarse el módulo.
     it('unfolds before the application exists', async () => {
-      process.env['SECRET_DB'] = JSON.stringify({ DB_HOST: 'academic' });
+      process.env['CREDENTIALS_DB'] = JSON.stringify({ DB_HOST: 'academic' });
       let hostWhenCreated: string | undefined;
       vi.mocked(NestFactory.create).mockImplementation(() => {
         hostWhenCreated = process.env['DB_HOST'];
         return Promise.resolve(app as unknown as INestApplication);
       });
 
-      await bootstrap(AppModule, { secrets: { prefix: 'SECRET_' } });
+      await bootstrap(AppModule, { secrets: { prefix: 'CREDENTIALS_' } });
 
       expect(hostWhenCreated).toBe('academic');
     });
 
     it('takes the options straight through', async () => {
-      process.env['SECRET_DB'] = JSON.stringify({ DB_HOST: 'academic' });
+      process.env['CREDENTIALS_DB'] = JSON.stringify({ DB_HOST: 'academic' });
 
       await bootstrap(AppModule, { secrets: { prefix: false } });
 
@@ -298,34 +321,66 @@ describe('bootstrap', () => {
     });
 
     it('stops the boot on a malformed secret', async () => {
-      process.env['SECRET_DB'] = 'not json';
+      process.env['CREDENTIALS_DB'] = 'not json';
 
       await expect(
-        bootstrap(AppModule, { secrets: { prefix: 'SECRET_' } }),
-      ).rejects.toThrow('SECRET_DB');
+        bootstrap(AppModule, { secrets: { prefix: 'CREDENTIALS_' } }),
+      ).rejects.toThrow('CREDENTIALS_DB');
     });
 
     // Sin perfil no hay prefijo que adivinar: `true` sólo desdobla lo que se
     // nombra en tiempo de ejecución.
     it('reads only NOVA_SECRETS when told true without a profile', async () => {
-      process.env['SECRET_DB'] = JSON.stringify({ DB_HOST: 'academic' });
+      process.env['CREDENTIALS_DB'] = JSON.stringify({ DB_HOST: 'academic' });
 
       await bootstrap(AppModule, { secrets: true });
       expect(process.env['DB_HOST']).toBeUndefined();
 
-      process.env['NOVA_SECRETS'] = 'SECRET_DB';
+      process.env['NOVA_SECRETS'] = 'CREDENTIALS_DB';
       await bootstrap(AppModule, { secrets: true });
       expect(process.env['DB_HOST']).toBe('academic');
+    });
+
+    it('reads a store before the application exists', async () => {
+      let passwordWhenCreated: string | undefined;
+      vi.mocked(NestFactory.create).mockImplementation(() => {
+        passwordWhenCreated = process.env['DB_PASSWORD'];
+        return Promise.resolve(app as unknown as INestApplication);
+      });
+
+      await bootstrap(AppModule, {
+        secrets: { imports: ['memory:ms-course'], sources: [MEMORY_STORE] },
+      });
+
+      expect(passwordWhenCreated).toBe('from-the-store');
+    });
+
+    // Un pedido es explícito: quien opera el servicio lo puso en la task
+    // definition, así que se lee aunque el servicio no declare nada.
+    it('reads NOVA_SECRETS_IMPORT even when the service declares nothing', async () => {
+      process.env['NOVA_SECRETS_IMPORT'] = 'key-vault:ms-course';
+
+      await expect(bootstrap(AppModule)).rejects.toThrow(
+        'needs the package @ahincho/nova-nestjs-secrets-key-vault',
+      );
+    });
+
+    it('lets the service turn the stores off too', async () => {
+      process.env['NOVA_SECRETS_IMPORT'] = 'vault:ms-course';
+
+      await bootstrap(AppModule, { secrets: false });
+
+      expect(process.env['DB_PASSWORD']).toBeUndefined();
     });
 
     describe('with a profile', () => {
       const acme = defineProfile({
         name: 'acme',
-        bootstrap: { secrets: { prefix: 'SECRET_' } },
+        bootstrap: { secrets: { prefix: 'CREDENTIALS_' } },
       });
 
       it('unfolds by the convention of the profile', async () => {
-        process.env['SECRET_DB'] = JSON.stringify({ DB_HOST: 'academic' });
+        process.env['CREDENTIALS_DB'] = JSON.stringify({ DB_HOST: 'academic' });
 
         await bootstrap(AppModule, { profile: acme });
 
@@ -333,7 +388,7 @@ describe('bootstrap', () => {
       });
 
       it('lets the service turn it off', async () => {
-        process.env['SECRET_DB'] = JSON.stringify({ DB_HOST: 'academic' });
+        process.env['CREDENTIALS_DB'] = JSON.stringify({ DB_HOST: 'academic' });
 
         await bootstrap(AppModule, { profile: acme, secrets: false });
 

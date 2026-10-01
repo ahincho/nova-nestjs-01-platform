@@ -117,12 +117,12 @@ export function secretVariables(options: UnfoldSecretsOptions = {}): string[] {
  * @throws {SecretUnfoldError} cuando una de ellas no es un objeto JSON.
  *
  * @example
- * // Descubre por la convención de la organización: cualquier SECRET_* que la
+ * // Descubre por la convención de la organización: cualquier CREDENTIALS_* que la
  * // task definition inyecte. El prefijo lo trae su perfil.
- * unfoldSecrets({ prefix: 'SECRET_' });
+ * unfoldSecrets({ prefix: 'CREDENTIALS_' });
  *
  * // Un secreto que no sigue la convención, sumado a los que sí.
- * unfoldSecrets({ prefix: 'SECRET_', variables: ['LEGACY_CREDENTIALS'] });
+ * unfoldSecrets({ prefix: 'CREDENTIALS_', variables: ['LEGACY_CREDENTIALS'] });
  */
 export function unfoldSecrets(options: UnfoldSecretsOptions = {}): string[] {
   const env = options.env ?? process.env;
@@ -135,36 +135,55 @@ export function unfoldSecrets(options: UnfoldSecretsOptions = {}): string[] {
       continue;
     }
 
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(raw);
-    } catch {
-      // El error original se descarta a propósito: `JSON.parse` cita el texto
-      // que no pudo leer, y ese texto es el secreto.
-      throw new SecretUnfoldError(variable, 'could not be parsed as JSON');
-    }
-
-    if (
-      typeof parsed !== 'object' ||
-      parsed === null ||
-      Array.isArray(parsed)
-    ) {
-      throw new SecretUnfoldError(variable, 'does not contain a JSON object');
-    }
-
-    for (const [key, value] of Object.entries(parsed)) {
+    const entries = parseSecretJson(
+      raw,
+      (reason) => new SecretUnfoldError(variable, reason),
+    );
+    for (const [key, value] of Object.entries(entries)) {
       if (!override && env[key] !== undefined) {
         continue;
       }
-      // Lo que no es escalar se descarta en vez de convertirse en
-      // "[object Object]", que pasaría cualquier validación llevando basura.
-      if (value !== null && typeof value !== 'object') {
-        env[key] = String(value);
-      }
+      env[key] = value;
     }
 
     unfolded.push(variable);
   }
 
   return unfolded;
+}
+
+/**
+ * Abre el JSON de un secreto con las reglas de ADR-042, las mismas para el
+ * entorno y para cualquier almacén: tiene que ser un objeto, y de sus claves
+ * solo cuentan los valores escalares.
+ *
+ * @param fail arma el error con la razón; nunca recibe el contenido.
+ * @returns cada clave con su valor como texto.
+ */
+export function parseSecretJson(
+  raw: string,
+  fail: (reason: string) => Error,
+): Record<string, string> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    // El error original se descarta a propósito: `JSON.parse` cita el texto
+    // que no pudo leer, y ese texto es el secreto.
+    throw fail('could not be parsed as JSON');
+  }
+
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    throw fail('does not contain a JSON object');
+  }
+
+  const entries: Record<string, string> = {};
+  for (const [key, value] of Object.entries(parsed)) {
+    // Lo que no es escalar se descarta en vez de convertirse en
+    // "[object Object]", que pasaría cualquier validación llevando basura.
+    if (value !== null && typeof value !== 'object') {
+      entries[key] = String(value);
+    }
+  }
+  return entries;
 }

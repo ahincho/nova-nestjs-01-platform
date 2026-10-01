@@ -8,7 +8,7 @@ Perfiles de organización, y defaults que ya no son de nadie en particular
 
 Varios defaults del núcleo eran las convenciones de una organización: el puerto
 que salía primero de `APP_PORT`, los roles de `realm_access.roles`, el
-identificador en mayúsculas, el prefijo `SECRET_`. Para cualquier otra eran
+identificador en mayúsculas, el prefijo de los secretos. Para cualquier otra eran
 defaults equivocados que había que deshacer servicio por servicio. Es ADR-036.
 
 **Un perfil declara las convenciones de una organización una sola vez**, en su
@@ -19,7 +19,7 @@ export const acme = defineProfile({
   name: 'acme',
   bootstrap: {
     portVariables: ['APP_PORT', 'PORT'],
-    secrets: { prefix: 'SECRET_' },
+    secrets: { prefix: 'CREDENTIALS_' },
   },
   auth: { rolesClaim: 'realm_access.roles' },
 });

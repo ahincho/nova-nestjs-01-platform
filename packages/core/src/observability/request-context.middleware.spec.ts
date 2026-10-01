@@ -138,6 +138,7 @@ describe('resolveObservabilityOptions', () => {
       'x-request-id',
       'x-user-id',
       'x-tenant-id',
+      'idempotency-key',
     ]);
     expect(options.echoRequestId).toBe(true);
     expect(options.generateId()).toEqual(expect.any(String));
