@@ -117,12 +117,12 @@ export function secretVariables(options: UnfoldSecretsOptions = {}): string[] {
  * @throws {SecretUnfoldError} cuando una de ellas no es un objeto JSON.
  *
  * @example
- * // Descubre por la convención de la organización: cualquier SECRET_* que la
+ * // Descubre por la convención de la organización: cualquier CREDENTIALS_* que la
  * // task definition inyecte. El prefijo lo trae su perfil.
- * unfoldSecrets({ prefix: 'SECRET_' });
+ * unfoldSecrets({ prefix: 'CREDENTIALS_' });
  *
  * // Un secreto que no sigue la convención, sumado a los que sí.
- * unfoldSecrets({ prefix: 'SECRET_', variables: ['LEGACY_CREDENTIALS'] });
+ * unfoldSecrets({ prefix: 'CREDENTIALS_', variables: ['LEGACY_CREDENTIALS'] });
  */
 export function unfoldSecrets(options: UnfoldSecretsOptions = {}): string[] {
   const env = options.env ?? process.env;
