@@ -63,13 +63,6 @@ jobs:
       # único lugar donde se ven los peers aplanados.
       - name: Consumer check
         uses: ./.github/actions/consumer-check
-        with:
-          # La 0.16.0 trae cambios incompatibles para el ejemplo: el cliente HTTP
-          # se reemplaza por NOVA_HTTP_TRANSPORT y no por global.fetch, y los
-          # defaults de organización pasan a un perfil. La rama del ejemplo ya
-          # está adaptada. Vuelve a vacío cuando el ejemplo pase a la 0.16.0 en
-          # su rama principal, después de publicarla.
-          consumer-ref: feat/platform-next
 
       # El ejemplo está escrito a mano, así que no prueba el generador -ni
       # `lint:arch`, que no corre en ningún otro lugar-. Estos dos generan un
