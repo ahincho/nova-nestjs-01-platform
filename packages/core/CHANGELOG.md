@@ -1,5 +1,347 @@
 # @ahincho/nova-nestjs
 
+## 0.16.0
+
+### Minor Changes
+
+- c75629e: Los fallos de upstream salen clasificados, y el transporte se puede reemplazar
+
+  Hasta ahora el cliente HTTP distinguía dos cosas: su propio timeout, que era un
+  504, y todo lo demás, que era el mismo 502. Se provocó cada fallo contra un
+  servidor real y undici deja un código distinto para cada uno; la diferencia se
+  perdía en el stack. Es ADR-035.
+
+  **Todo fallo sale como `UpstreamException`**, con un tipo del registro de
+  RFC 9209 y una categoría que dice de quién es el problema: `connectivity`,
+  `timeout`, `network`, `response`, `contract` o `internal`. Es una
+  `HttpException`, así que un servicio que no la atrapa contesta lo correcto sin
+  tocar nada, y el cuerpo sigue saliendo con el mensaje genérico.
+
+  **El log lleva la clasificación como campos**, en un objeto `upstream`, tanto en
+  la línea del cliente como en la del filtro de errores. Un tablero cuenta por
+  `upstream.category` sin parsear texto.
+
+  **Cambios de comportamiento**:
+
+  - Los timeouts de conexión y de DNS pasan de 502 a 504, como recomienda el RFC.
+  - Un upstream que corta la respuesta a mitad del cuerpo es un 502. Antes era un
+    500 sin clasificar, contado como defecto propio.
+  - Un 2xx cuyo cuerpo no es JSON falla con 502 `http_response_content_invalid`.
+    Antes se devolvía el texto como si fuera el tipo pedido. Con `forwardError`, el
+    cuerpo de un error sigue llegando como texto.
+  - Quien atrapaba `BadGatewayException` o `GatewayTimeoutException` del cliente
+    ahora recibe `UpstreamException`, con el status en `getStatus()`.
+
+  **El transporte es un proveedor**, `NOVA_HTTP_TRANSPORT`. El cliente no usa el
+  `fetch` global, así que una prueba que asignaba `global.fetch` ya no interceptaba
+  nada; ahora lo reemplaza con
+  `overrideProvider(NOVA_HTTP_TRANSPORT).useValue(fetchMock)`, con el mismo
+  contrato que tenía el `fetch` global.
+
+- 116bce0: El id de correlación entra por el borde con su propio nombre, y la identidad la escribe sólo la autenticación
+
+  Nova usaba una sola cabecera para tres cosas: leía el id de la primera de
+  `correlationHeaders`, lo devolvía con ese nombre y lo reenviaba con ese mismo
+  nombre. Un frontend que lo manda como `transaction-id` no tenía cómo entrar sin
+  que todos los servicios de adentro cambiaran también. Es ADR-037.
+
+  - `observability.requestId.accept`: de qué cabeceras se toma el id del llamador,
+    en orden. Por defecto, la cabecera con la que viaja, que es lo de antes.
+  - `observability.requestId.echo`: con qué nombre se devuelve. Por defecto, la
+    primera de `accept`.
+  - Hacia los upstreams el id sigue viajando con la primera de
+    `correlationHeaders`, y es el mismo valor en el log y en el cuerpo de un error.
+    El logger lee las mismas cabeceras en el mismo orden: `requestIdHeader` acepta
+    ahora una lista.
+  - Con `bootstrap({ cors })`, CORS permite las cabeceras de `accept` y expone la
+    de `echo` sin declararlas aparte. `buildCorsOptions` recibe esas cabeceras como
+    segundo parámetro opcional.
+  - `auth.roleHeader`: con qué cabecera viaja el rol hacia los upstreams. Sin
+    default: el rol no viaja si nadie lo pide.
+
+  **Corrección de seguridad.** Cuando un servicio declara `auth`, las cabeceras que
+  escribe la autenticación -la del usuario y, si se declaró, la del rol- ya no se
+  copian de la petición que llega, en ninguna ruta. Antes, una ruta `@Public()`
+  reenviaba hacia adentro el `x-user-id` que mandara el cliente, porque está entre
+  las cabeceras de correlación por defecto y el guard terminaba antes de
+  reescribirlo. Un servicio que dependía de eso deja de propagarlo; uno que confía
+  en una identidad escrita por un gateway no declara `auth`, y la sigue copiando.
+
+  Una cabecera de correlación que llega vacía ahora se trata como ausente: antes un
+  `x-request-id` vacío daba un id vacío, que correlaciona todo con todo.
+
+- f72d3be: La clave de idempotencia cruza el BFF
+
+  Es la parte de NestJS de ADR-047. El BFF no tiene estado y no aplica la
+  idempotencia: la aplica el servicio que tiene los datos, como pedidos en Plaza. Lo
+  que le toca al BFF es dejarla pasar.
+
+  - **CORS permite `Idempotency-Key`**, así que un navegador puede reintentar una
+    compra con su clave, y **expone `Idempotent-Replayed` y `Retry-After`**, para que
+    el script sepa si la respuesta es una repetida y cuánto esperar ante un 409.
+  - **El cliente HTTP propaga `idempotency-key`** a los upstreams, como ya hacía con
+    `x-request-id`: se suma a `DEFAULT_CORRELATION_HEADERS`, y solo viaja si el
+    llamador la mandó.
+
+  **Para tener en cuenta:** una lista propia en `correlationHeaders` reemplaza la de
+  Nova entera, así que tiene que sumar `idempotency-key` para propagarla. Y como la
+  clave viaja a cada upstream, un handler que llama a dos rutas con `@Idempotent`
+  del mismo servicio recibe un 422 en la segunda: una clave es de una sola operación.
+
+- 6189700: **Errores por capa, con trazabilidad (ADR-031).** Quien lanza dice qué pasó, y la plataforma decide
+  el HTTP, el código y el cuerpo.
+
+  ```ts
+  import { DomainError } from '@ahincho/nova-nestjs/errors';
+
+  throw DomainError.notFound('Pedido no encontrado', {
+    code: 'ORDER_NOT_FOUND',
+  });
+  ```
+
+  - **El subpath `@ahincho/nova-nestjs/errors` no carga Nest.** Trae `Layer`; una clase por capa,
+    que son `DomainError`, `ApplicationError`, `InfrastructureError` y `PlatformError`, cada una con
+    su tipo enumerado y una fábrica por tipo; y los tres puertos con su implementación de Nova:
+    `ErrorCatalog`, `ErrorStatusMapper` y `ErrorSerializer`. Una regla de oxlint y un test que sigue
+    el grafo de imports verifican que siga sin framework.
+  - **El `traceId` se toma al construir el error**, del contexto de la petición, y llega al cuerpo
+    como `metadata.traceId` y al log como campo, junto a `layer`, `type`, `code` y `upstream`. Si ni
+    el error ni la petición traen uno -un cuerpo JSON que no se puede leer falla antes de que el
+    middleware abra el contexto-, el filtro genera uno: un error nunca sale sin algo que citar.
+  - **`NovaModule.forRoot({ errors: { catalog, statusMapper, serializer } })`** reemplaza cualquiera
+    de los tres puertos; los que no se declaran quedan con los de Nova.
+  - **El nivel del log lo decide la capa.** `domain` y `application` son esperados y van en `warn`,
+    sin stack; `infrastructure` y `platform` son incidentes y van en `error`, con la causa completa.
+
+  Lo que ya existía sigue contestando el mismo status: una `HttpException` conserva su status, su
+  `errorCode` y su mensaje, y se lee por su status. Un 4xx es `application`, un 502, 503 o 504 es
+  `infrastructure` y otro 5xx es `platform`.
+
+  **Cambios incompatibles que un cliente puede ver**, y por eso es un minor y no un patch:
+
+  - **Los 502, 503 y 504 tienen código propio**: `BAD_GATEWAY`, `SERVICE_UNAVAILABLE` y
+    `GATEWAY_TIMEOUT`, en vez de `INTERNAL_SERVER_ERROR`. Es el catálogo de ADR-031, y le dice al
+    cliente si conviene reintentar sin nombrar al proveedor. `@ApiErrors()` documenta lo mismo. Un
+    cliente o un test que comparaba esos 5xx contra `INTERNAL_SERVER_ERROR` tiene que actualizarse.
+  - **Un `UpstreamHttpError` que se deja escapar sale como 504 si el upstream contestó 504 o 408, y
+    como 502 con cualquier otra cosa**, y ya no como 500. Es lo mismo que contesta el cliente HTTP
+    cuando no se le pide el error crudo.
+  - **La línea de log del filtro cambia de forma.** Los campos son `traceId`, `layer`, `type`, `code`
+    y, si hay, `upstream`, más `status`, `message`, `requestId`, `method` y `path`, y `fieldErrors`
+    cuando el error los trae. Deja de llevar `errors`, así que una consulta o un tablero escrito
+    contra ese campo tiene que moverse a `code` y `layer`.
+
+  Y dos cambios que suman sin quitar nada:
+
+  - **Toda respuesta de error trae `metadata: { traceId }`.** Un éxito no cambia, pero un test que
+    compara el cuerpo de un error con igualdad exacta tiene que sumarla.
+  - **Un error que dice cuánto esperar lleva la cabecera `Retry-After`, en segundos.**
+
+  No hay contador `nova.errors`: ADR-031 lo pide en el registro de métricas del servicio, si lo tiene,
+  y el núcleo todavía no tiene ninguno.
+
+- ee854b3: La plataforma monta el logger, el pool de conexiones y el desdoblado de secretos
+
+  Cuatro piezas que cada servicio venía resolviendo por su cuenta, o no resolviendo.
+
+  **El logger viene montado.** `nestjs-pino` es ahora una dependencia real del core,
+  `NovaModule.forRoot()` lo levanta y `bootstrap()` lo instala, así que un
+  `new Logger('X')` de `@nestjs/common` ya escribe JSON estructurado. Antes la
+  plataforma ofrecía las opciones y dejaba el montaje a cada servicio, y ni el
+  ejemplo ni el servicio generado lo hacían: salían con el logger de texto plano de
+  Nest, o sea con líneas que llegan al índice de logs y no aparecen en ninguna
+  consulta. Se apaga con `observability: { logger: false }`.
+
+  El id de correlación dejó de depender del orden de los middlewares: `genReqId`
+  lee la cabecera, y el contexto adopta un `req.id` que ya esté puesto en vez de
+  generar otro.
+
+  **El filtro de excepciones renombró dos campos**, `requestId` a `traceId` y
+  `status` a `statusCode`, que son los nombres por los que están escritas las
+  consultas y los tableros del índice.
+
+  **El cliente HTTP tiene pool.** Todas las llamadas salientes comparten un `Agent`
+  de undici que se cierra ordenadamente al apagar. Medido: doce llamadas
+  concurrentes usan doce sockets sin pool y dos con `connections: 2`. El cliente
+  pasó a usar el `fetch` de undici y no el global, porque el de Node rechaza un
+  despachador del paquete. Se apaga con `pool: false`, y una llamada puede traer su
+  propio `dispatcher`.
+
+  **`bootstrap()` desdobla los secretos inyectados**, antes de que exista la
+  aplicación. No lleva ninguna lista de nombres: descubre por el prefijo que
+  declara el perfil de la organización, acepta nombres propios, y `NOVA_SECRETS`
+  permite agregar uno desde la task definition sin tocar el código. Un secreto
+  ausente no falla; uno malformado corta el arranque nombrando la variable y nunca
+  su contenido.
+
+  **El puerto se puede leer de otra variable**, con `portVariables` o desde el
+  perfil: la que inyecta la task definition, que operaciones puede mover sin tocar
+  la imagen.
+
+- d9570f4: Perfiles de organización, y defaults que ya no son de nadie en particular
+
+  Varios defaults del núcleo eran las convenciones de una organización: el puerto
+  que salía primero de `APP_PORT`, los roles de `realm_access.roles`, el
+  identificador en mayúsculas, el prefijo de los secretos. Para cualquier otra eran
+  defaults equivocados que había que deshacer servicio por servicio. Es ADR-036.
+
+  **Un perfil declara las convenciones de una organización una sola vez**, en su
+  propio paquete:
+
+  ```ts
+  export const acme = defineProfile({
+    name: 'acme',
+    bootstrap: {
+      portVariables: ['APP_PORT', 'PORT'],
+      secrets: { prefix: 'CREDENTIALS_' },
+    },
+    auth: { rolesClaim: 'realm_access.roles' },
+  });
+
+  NovaModule.forRoot({ profile: acme });
+  void bootstrap(AppModule, { profile: acme });
+  ```
+
+  El orden es fijo -defaults de Nova, perfil, servicio- y el servicio sigue
+  pudiendo cambiar cualquier cosa. Un perfil no enciende la autenticación ni toca
+  una regla del núcleo. Si `NovaModule` y `bootstrap()` reciben perfiles
+  distintos, el arranque corta.
+
+  **Cambios incompatibles**, que un servicio recupera declarando esos valores en
+  su perfil:
+
+  - El puerto sale de `PORT`. `APP_PORT` ya no se lee sin que alguien la declare.
+  - `secrets` no trae prefijo: `true` sin perfil sólo lee `NOVA_SECRETS`.
+    `DEFAULT_SECRET_PREFIX` deja de existir.
+  - Los roles salen de `roles`, el claim de RFC 9068, y no se descarta ningún rol
+    técnico. Un token de Keycloak necesita `rolesClaim: 'realm_access.roles'`.
+  - El identificador del usuario sólo pierde los espacios de los bordes.
+    `normalizeUserId`, que quitaba la arroba y pasaba a mayúsculas, sigue
+    existiendo para declararlo en un perfil.
+
+  El identificador sigue saliendo de `preferred_username`, que es un claim
+  estándar de OpenID Connect y no de un proveedor.
+
+- 0f7c29c: El estándar de API se puede reemplazar sin apagar sus reglas
+
+  Hasta ahora la única forma de contestar con otro cuerpo era apagar el
+  interceptor y el filtro, y apagarlos se llevaba las reglas: el saneado del 5xx,
+  el caso que no es HTTP, `@SkipResponseWrapper()`. El servicio las tenía que
+  reescribir, y cualquiera de las tres se podía olvidar. Es ADR-034.
+
+  **El estándar es un puerto.** `ApiStandard` dice cómo se ve una respuesta
+  exitosa, un error y su documentación, y `NovaEnvelopeStandard` -el sobre de
+  siempre- es la implementación que se registra cuando nadie declara otra:
+
+  ```ts
+  NovaModule.forRoot({ apiStandard: { standard: OrgStandard } });
+  ```
+
+  **Un servicio que no declara nada contesta igual que antes**: las pruebas del
+  sobre pasan sin tocarlas, y el documento OpenAPI se comparó contra el que
+  generaba 0.15.0 y es idéntico, hasta en el orden de las claves.
+
+  **El estándar decide la forma; la plataforma decide qué se puede decir.** El
+  estándar no recibe la excepción sino un fallo ya clasificado y saneado, así que
+  no tiene de dónde filtrar el mensaje de un 5xx ni su código de dominio. Qué
+  respuestas pasan por él y qué se valida en la entrada tampoco cambian.
+
+  **La entrada pasa por el mismo estándar.** `ValidationException` lleva
+  `violations`, neutras -campo y mensaje-, y el catálogo del estándar activo les
+  pone nombre. `validationErrors` sigue funcionando, deprecada.
+
+  **Cambiar sólo los códigos no pide escribir un estándar**:
+  `new NovaEnvelopeStandard({ codes: { byStatus: { 502: 'BAD_GATEWAY' } } })`. Se
+  suman al catálogo de Nova en vez de reemplazarlo.
+
+  **`@ApiEnvelope` y `@ApiErrors` documentan el estándar activo.** Corren antes de
+  que exista la inyección, así que dejan una marca que `setupOpenApi` resuelve al
+  armar el documento; con otro estándar, el sobre de Nova ni aparece.
+
+  `wrapResponses` y `catchExceptions` quedan deprecadas. No se rompe nada: siguen
+  funcionando igual.
+
+- e85f82d: Los secretos de un almacén: Vault y AWS Secrets Manager
+
+  Un servicio ya no solo desdobla el JSON que la plataforma inyecta en el entorno:
+  también puede leer sus secretos de un almacén al arrancar, antes de que exista
+  la aplicación (ADR-049).
+
+  ```ts
+  void bootstrap(AppModule, { secrets: { imports: ['vault:plaza-bff'] } });
+  ```
+
+  O desde la task definition, con `NOVA_SECRETS_IMPORT=vault:plaza-bff`. Es la
+  misma forma y la misma variable que en Spring Boot y en Quarkus: quien opera un
+  servicio pide un almacén igual sin saber en qué framework está escrito.
+
+  **Dos paquetes nuevos**, uno por almacén, para que un servicio que usa Vault no
+  instale el SDK de AWS: `@ahincho/nova-nestjs-secrets-vault` y
+  `@ahincho/nova-nestjs-secrets-aws-secrets-manager`. El servicio no registra
+  ninguno: `vault:` hace que la plataforma lo cargue desde sus dependencias, y si
+  no está instalado el arranque corta diciendo cuál instalar.
+
+  **Las reglas son las de Java.** Un secreto obligatorio que no existe corta el
+  arranque, salvo con `optional:`; cada llamada lleva timeout y no se reintenta;
+  ningún error cita el contenido; un pedido gana sobre lo que se desdobla del
+  entorno, y entre dos gana el último. La configuración lleva los mismos nombres
+  que en Java, escritos como variables: `NOVA_SECRETS_VAULT_ADDRESS`, que cae a
+  `VAULT_ADDR`, o `NOVA_SECRETS_AWS_SECRETS_MANAGER_REGION`.
+
+  **Un pedido se lee aunque el servicio no declare nada**, porque es explícito.
+  Un servicio que hoy tiene `NOVA_SECRETS_IMPORT` puesta sin querer va a cortar el
+  arranque si no instaló el almacén; `secrets: false` apaga todo.
+
+  El core exporta el contrato para escribir otro almacén: `SecretSourceProvider`,
+  `SecretSource`, `secretFromJson`, `durationSetting` y `SecretSourceError`.
+
+- e2c1140: El stack va en `err` y el mensaje de una línea de error agrupa
+
+  La misma prueba en vivo mostró que el filtro de errores ponía el stack entero en
+  `msg`, así que cada línea era distinta y agrupar por mensaje dejaba de servir
+  justo para los errores. Venía de antes de esta versión, igual que lo demás.
+
+  - El filtro escribe con la forma de pino: el mensaje es el de la excepción, sin
+    el stack, y en un 5xx el error va en `err`. La línea de un 4xx ahora trae
+    mensaje, y sigue sin stack.
+  - `err` tiene siempre la misma forma: `type`, `message` y `stack`, con las
+    causas encadenadas, y `code` como texto. El resto de las propiedades
+    enumerables del error ya no llega al log: el `response` de una
+    `HttpException`, que en unas es texto y en otras objeto, hacía que el índice
+    rechazara líneas enteras, y el `body` de un `UpstreamHttpError` es el cuerpo
+    de error del upstream.
+  - La línea de la petición de un 5xx ya no trae el `err` que inventa pino-http,
+    con un stack que apuntaba a su propio código.
+  - La sonda de readiness lleva el chequeo y el motivo como campos,
+    `readiness.check` y `readiness.message`, con un mensaje fijo.
+
+- 8448f01: Cada fallo de upstream deja una sola línea de error, la del filtro
+
+  Una prueba en vivo contra un upstream caído mostró dos líneas de error por cada
+  fallo, con los mismos campos: la de `HttpClientService` y la del filtro de
+  errores. Todo conteo por categoría daba el doble. Venía de antes de esta
+  versión.
+
+  - `HttpClientService` ya no registra los fallos: lanza, y la excepción lleva los
+    campos. El filtro deja la única línea, con `upstream` -la clasificación- y
+    `outbound` -el método, la URL sin query y el plazo-. Un fallo que el llamador
+    atrapa para degradar la respuesta lo registra el llamador, con
+    `error.logFields`.
+  - Tampoco registra el error pedido con `forwardError`, que salía en `error`
+    aunque el llamador lo tradujera a un 404.
+  - El aviso de las cabeceras propagadas lleva la causa en `err`, no pegada al
+    mensaje.
+
+  **`UpstreamHttpError` es ahora una `UpstreamException`.** El patrón de siempre
+  -traducir el status que se entiende y relanzar el resto- convertía lo relanzado
+  en un 500, porque el filtro veía un `Error` suelto. Ahora sale como sin
+  `forwardError`: 502 o 504, clasificado. Quien la distinguía con
+  `instanceof HttpException` la encuentra ahora de ese lado.
+
+  Un tablero o una alerta escritos sobre las líneas de `HttpClientService` tienen
+  que pasar a las del filtro, `context: AllExceptionsFilter`, que traen los mismos
+  campos.
+
 ## 0.15.0
 
 ### Patch Changes

@@ -1,6 +1,6 @@
 {
   "name": "@ahincho/nova-nestjs-schematics",
-  "version": "0.15.0",
+  "version": "0.16.0",
   "description": "Generators for Nova Platform NestJS services: an upstream client and a feature slice, in the shape the platform expects",
   "license": "EPL-2.0",
   "repository": {

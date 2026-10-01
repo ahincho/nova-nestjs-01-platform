@@ -1,6 +1,6 @@
 {
   "name": "@ahincho/nova-nestjs-toolchain",
-  "version": "0.15.0",
+  "version": "0.16.0",
   "description": "Shared TypeScript, oxlint and Vitest presets for Nova Platform NestJS projects",
   "license": "EPL-2.0",
   "repository": {
