@@ -1,6 +1,6 @@
 {
   "name": "@ahincho/nova-nestjs-secrets-vault",
-  "version": "0.15.0",
+  "version": "0.16.0",
   "description": "HashiCorp Vault (KV version 2) as a secret store for the Nova Platform NestJS meta-framework: the service imports vault:<path> and reads the keys as environment variables",
   "license": "EPL-2.0",
   "repository": {
